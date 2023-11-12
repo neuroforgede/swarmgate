@@ -211,7 +211,7 @@ async function isValidTaskTemplate(
         // we will have to keep track of volumes in a database ourselves
         if (mount.Type == 'volume' || mount.Type == 'cluster') {
           if (await doesVolumeExist(mount.Source)) {
-            if (!await isVolumeOwned(mount.Source)) {
+            if (!await isOwnedVolume(mount.Source)) {
               res.status(403).send(`Access denied: Volume ${mount.Source} is not owned.`);
               return false;
             }
