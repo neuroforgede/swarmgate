@@ -5,7 +5,7 @@ import audit from 'express-requests-logger'
 import morgan from 'morgan';
 import * as http from 'http';
 
-const app = express();
+export const app = express();
 const docker = new Docker({ socketPath: '/var/run/docker.sock' });
 
 // in production we should not allow the local volume driver if possible
@@ -782,7 +782,7 @@ app.get('/:version/volumes', async (req, res) => {
 // Endpoint to delete a volume, respecting ownership
 app.delete('/:version/volumes/:name', async (req, res) => {
   const volumeName = req.params.name;
-  
+
   if (await isOwnedVolume(volumeName)) {
     try {
       const volume = docker.getVolume(volumeName);
@@ -878,11 +878,4 @@ app.get('/:version/distribution/:rest(*)', async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 
-});
-
-// Add other endpoints as needed
-
-const port = 8080;
-app.listen(port, () => {
-  console.log(`Proxy server running on http://localhost:${port}`);
 });
