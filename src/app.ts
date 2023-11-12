@@ -8,6 +8,25 @@ import * as http from 'http';
 const app = express();
 const docker = new Docker({ socketPath: '/var/run/docker.sock' });
 
+// in production we should not allow the local volume driver if possible
+// as ownership checking does not really work for it
+const ALLOWED_REGULAR_VOLUME_DRIVERS = ['local'];
+const KNOWN_VOLUME_TYPES = ['bind', 'volume', 'tmpfs', 'npipe', 'cluster'];
+const ALLOWED_VOLUME_TYPES = ['bind', 'volume', 'tmpfs', 'npipe', 'cluster'];
+const ALLOW_PORT_EXPOSE = true;
+
+function isKnownMountType(volumeType: string): boolean {
+  return KNOWN_VOLUME_TYPES.includes(volumeType);
+}
+
+function isMountTypeAllowed(volumeType: string): boolean {
+  return ALLOWED_VOLUME_TYPES.includes(volumeType);
+}
+
+function isVolumeDriverAllowed(volumeDriver: string): boolean {
+  return ALLOWED_REGULAR_VOLUME_DRIVERS.includes(volumeDriver);
+}
+
 const label = "owned-by";
 const labelValue = "secret-value";
 
@@ -107,19 +126,89 @@ function doesVolumeExist(volumeName: string): Promise<boolean> {
   });
 }
 
-// Define the routes you want to expose
-app.post('/:version/services/create', async (req, res) => {
-  // Add ownership label to the service creation request
-  const serviceSpec = req.body;
-  try {
-    serviceSpec.Labels = { ...serviceSpec.Labels, [label]: labelValue };
-    if(Array.isArray(serviceSpec.TaskTemplate.ContainerSpec.Mounts)) {
-      for(const mount of serviceSpec.TaskTemplate.ContainerSpec.Mounts) {
-        if(mount.Type == 'volume' || mount.Type == 'cluster') {
-          if(await doesVolumeExist(mount.Source)) {
-            if(!await isVolumeOwned(mount.Source)) {
+// returns true if we should continue
+async function isValidTaskTemplate(
+  res: express.Response,
+  taskTemplate: {
+    ContainerSpec?: {
+      Secrets?: { SecretName: string }[],
+      Configs?: { ConfigName: string }[],
+      Mounts?: { Type: string, Source: string, VolumeOptions?: { Driver?: string, Labels?: { [key: string]: string } } }[]
+    },
+    Runtime?: string,
+    Networks?: { Target: string }[],
+    EndpointSpec?: { Ports?: { TargetPort: number, Protocol: string }[] }
+  }): Promise<boolean> {
+  const containerSpec = taskTemplate?.ContainerSpec;
+  if (taskTemplate?.Runtime != 'plugin' && taskTemplate?.Runtime != 'attachment') {
+    if (!containerSpec) {
+      res.status(400).send(`ContainerSpec is required in TaskTemplate.`);
+      return false;
+    }
+  }
+
+  if(taskTemplate.Networks) {
+    for(const network of taskTemplate.Networks) {
+      if(!await isOwnedNetwork(network.Target)) {
+        res.status(403).send(`Access denied: Network ${network.Target} is not owned.`);
+        return false;
+      }
+    }
+  }
+
+  if(taskTemplate.EndpointSpec?.Ports) { 
+    for(const port of taskTemplate.EndpointSpec.Ports) {
+      if(!ALLOW_PORT_EXPOSE) {
+        res.status(403).send(`Access denied: Exposing ports is not allowed.`);
+        return false;
+      }
+    }
+  }
+
+  if (containerSpec) {
+    if (containerSpec.Secrets) {
+      for (const secret of containerSpec.Secrets) {
+        if (!await isOwnedSecret(secret.SecretName)) {
+          res.status(403).send(`Access denied: Secret ${secret.SecretName} is not owned.`);
+          return false;
+        }
+      }
+    }
+    if (containerSpec.Configs) {
+      for (const config of containerSpec.Configs) {
+        if (!await isOwnedConfig(config.ConfigName)) {
+          res.status(403).send(`Access denied: Config ${config.ConfigName} is not owned.`);
+          return false;
+        }
+      }
+    }
+    if (Array.isArray(containerSpec.Mounts)) {
+      for (const mount of (taskTemplate as any).ContainerSpec.Mounts) {
+        if(!isKnownMountType(mount.Type)) {
+          res.status(400).send(`Mount type ${mount.Type} is not supported.`);
+          return false;
+        }
+        if(!isMountTypeAllowed(mount.Type)) {
+          res.status(400).send(`Mount type ${mount.Type} is not allowed.`);
+          return false;
+        }
+        
+        // we can't enforce volume existance before we actually run this
+        // as this is not how docker swarm handles it
+        // so we can only check ownership on non existant volumes
+        //
+        // problem: if the volume is created by e.g. by the default local
+        // driver, we can't check ownership reliably, as the volume
+        // might not exist on this host.
+        // This is why for security reasons using the local volume driver
+        // should be disabled in most cases.
+        // if this ever becomes a requirement for this proxy
+        // we will have to keep track of volumes in a database ourselves
+        if (mount.Type == 'volume' || mount.Type == 'cluster') {
+          if (await doesVolumeExist(mount.Source)) {
+            if (!await isVolumeOwned(mount.Source)) {
               res.status(403).send(`Access denied: Volume ${mount.Source} is not owned.`);
-              return;
+              return false;
             }
           }
           const volumeOptions = mount.VolumeOptions || {};
@@ -128,6 +217,24 @@ app.post('/:version/services/create', async (req, res) => {
         }
       }
     }
+  }
+  return true;
+}
+
+// Define the routes you want to expose
+app.post('/:version/services/create', async (req, res) => {
+  // Add ownership label to the service creation request
+  const serviceSpec: Docker.CreateServiceOptions = req.body;
+  try {
+    serviceSpec.Labels = { ...serviceSpec.Labels, [label]: labelValue };
+    const taskTemplate = serviceSpec.TaskTemplate;
+
+    if (!await isValidTaskTemplate(res, taskTemplate as any)) {
+      return;
+    }
+
+    // TODO: verify privileges, capability-add and capability-drop
+    // TODO: setup default ulimits 
 
     const authHeader = req.headers['X-Registry-Auth'];
     if (authHeader) {
@@ -148,32 +255,20 @@ app.post('/:version/services/:id/update', async (req, res) => {
 
   if (await isOwnedService(serviceId)) {
     try {
+      const taskTemplate = updateSpec.TaskTemplate;
+
+      if (!await isValidTaskTemplate(res, taskTemplate as any)) {
+        return;
+      }
+
+      const service = docker.getService(serviceId);
+
+
       const authHeader = req.headers['X-Registry-Auth'];
       updateSpec.Labels = { ...updateSpec.Labels, [label]: labelValue };
       updateSpec.version = req.query.version;
       updateSpec.registryAuthFrom = req.query.registryAuthFrom;
       updateSpec.rollback = req.query.rollback;
-
-      // FIXME: unclear if this is an actual security check
-      // or whether there is actually a way to end up with a bad volume
-
-      if(Array.isArray(updateSpec.TaskTemplate.ContainerSpec.Mounts)) {
-        for(const mount of updateSpec.TaskTemplate.ContainerSpec.Mounts) {
-          if(mount.Type == 'volume' || mount.Type == 'cluster') {
-            if(await doesVolumeExist(mount.Source)) {
-              if(!await isVolumeOwned(mount.Source)) {
-                res.status(403).send(`Access denied: Volume ${mount.Source} is not owned.`);
-                return;
-              }
-            }
-            const volumeOptions = mount.VolumeOptions || {};
-            mount.VolumeOptions.Labels = { ...volumeOptions.Labels || {}, [label]: labelValue };
-            mount.volumeOptions = volumeOptions;
-          }
-        }
-      }
-
-      const service = docker.getService(serviceId);
 
       if (authHeader) {
         const auth = JSON.parse(Buffer.from(authHeader as string, 'base64').toString('utf-8'));
@@ -629,10 +724,33 @@ async function isOwnedVolume(volumeName: string): Promise<boolean> {
 
 // Endpoint to create a volume with ownership label
 app.post('/:version/volumes/create', async (req, res) => {
-  const volumeSpec = req.body;
+  const volumeSpec: Docker.VolumeCreateOptions = req.body;
   volumeSpec.Labels = { ...volumeSpec.Labels, [label]: labelValue };
 
   try {
+    console.log(volumeSpec);
+    if (!volumeSpec.Driver) {
+      res.status(400).send(`Volume driver is required.`);
+      return;
+    }
+    if (!isVolumeDriverAllowed(volumeSpec.Driver)) {
+      res.status(400).send(`Volume driver ${volumeSpec.Driver} is not allowed.`);
+      return;
+    }
+
+    // for cluster volumes verify secret access permissions
+    const clusterVolumeSpec = (volumeSpec as any).ClusterVolumeSpec;
+    // TOOD: should we disallow creation of volumes if they are not allowed
+    // maybe check against mount type?
+    if (clusterVolumeSpec.AccessMode && clusterVolumeSpec.AccessMode.Secrets) {
+      for (const secret of clusterVolumeSpec.AccessMode.Secrets) {
+        if (!await isOwnedSecret(secret.Secret)) {
+          res.status(403).send(`Access denied: Secret ${secret.Secret} is not owned.`);
+          return;
+        }
+      }
+    }
+
     const volume = await docker.createVolume(volumeSpec);
     res.status(201).json(volume);
   } catch (error: any) {
@@ -682,6 +800,41 @@ app.get('/:version/volumes/:name', async (req, res) => {
       const volume = await docker.getVolume(volumeName).inspect();
       res.json(volume);
     } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  } else {
+    res.status(403).send('Access denied: Volume is not owned.');
+  }
+});
+
+// Endpoint to update a volume, respecting ownership (only supported for cluster volumes)
+app.put('/:version/volumes/:name', async (req, res) => {
+  const volumeName = req.params.name;
+  const version = req.params.version;
+  if (await isOwnedVolume(volumeName)) {
+    try {
+      var optsf = {
+        path: `/${version}/volumes/${volumeName}`,
+        method: 'PUT',
+        statusCodes: {
+          200: true,
+          404: 'no such service',
+          500: 'server error'
+        },
+        headers: req.headers
+      };
+
+      const ret = await new docker.modem.Promise(function (resolve, reject) {
+        docker.modem.dial(optsf, function (err, data) {
+          if (err) {
+            return reject(err);
+          }
+          resolve(data);
+        });
+      });
+      res.send(ret);
+    } catch (error: any) {
+      console.log(error);
       res.status(500).json({ message: error.message });
     }
   } else {
