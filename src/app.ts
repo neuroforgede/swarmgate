@@ -95,13 +95,40 @@ async function isOwnedService(serviceId: string): Promise<boolean> {
   }
 }
 
+function doesVolumeExist(volumeName: string): Promise<boolean> {
+  return new Promise((resolve, reject) => {
+    docker.getVolume(volumeName).inspect((err, data) => {
+      if (err) {
+        resolve(false);
+      } else {
+        resolve(true);
+      }
+    });
+  });
+}
+
 // Define the routes you want to expose
 app.post('/:version/services/create', async (req, res) => {
   // Add ownership label to the service creation request
   const serviceSpec = req.body;
-  serviceSpec.Labels = { ...serviceSpec.Labels, [label]: labelValue };
-
   try {
+    serviceSpec.Labels = { ...serviceSpec.Labels, [label]: labelValue };
+    if(Array.isArray(serviceSpec.TaskTemplate.ContainerSpec.Mounts)) {
+      for(const mount of serviceSpec.TaskTemplate.ContainerSpec.Mounts) {
+        if(mount.Type == 'volume' || mount.Type == 'cluster') {
+          if(await doesVolumeExist(mount.Source)) {
+            if(!await isVolumeOwned(mount.Source)) {
+              res.status(403).send(`Access denied: Volume ${mount.Source} is not owned.`);
+              return;
+            }
+          }
+          const volumeOptions = mount.VolumeOptions || {};
+          mount.VolumeOptions.Labels = { ...volumeOptions.Labels || {}, [label]: labelValue };
+          mount.volumeOptions = volumeOptions;
+        }
+      }
+    }
+
     const authHeader = req.headers['X-Registry-Auth'];
     if (authHeader) {
       const auth = JSON.parse(Buffer.from(authHeader as string, 'base64').toString('utf-8'));
@@ -126,6 +153,24 @@ app.post('/:version/services/:id/update', async (req, res) => {
       updateSpec.version = req.query.version;
       updateSpec.registryAuthFrom = req.query.registryAuthFrom;
       updateSpec.rollback = req.query.rollback;
+
+      // TODO: patch containerspec
+
+      if(Array.isArray(updateSpec.TaskTemplate.ContainerSpec.Mounts)) {
+        for(const mount of updateSpec.TaskTemplate.ContainerSpec.Mounts) {
+          if(mount.Type == 'volume' || mount.Type == 'cluster') {
+            if(await doesVolumeExist(mount.Source)) {
+              if(!await isVolumeOwned(mount.Source)) {
+                res.status(403).send(`Access denied: Volume ${mount.Source} is not owned.`);
+                return;
+              }
+            }
+            const volumeOptions = mount.VolumeOptions || {};
+            mount.VolumeOptions.Labels = { ...volumeOptions.Labels || {}, [label]: labelValue };
+            mount.volumeOptions = volumeOptions;
+          }
+        }
+      }
 
       const service = docker.getService(serviceId);
 
@@ -188,7 +233,7 @@ app.delete('/:version/services/:id', async (req, res) => {
 
   try {
     const service = docker.getService(serviceId);
-    await service.remove();
+    await service.remove({});
     res.status(200).json({ message: 'Service deleted successfully' });
   } catch (error: any) {
     res.status(500).json({ message: error.message });
@@ -317,7 +362,7 @@ app.delete('/:version/networks/:id', async (req, res) => {
   if (await isOwnedNetwork(networkId)) {
     try {
       const network = docker.getNetwork(networkId);
-      await network.remove();
+      await network.remove({});
       res.status(200).send(`Network ${networkId} deleted successfully.`);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
@@ -391,7 +436,7 @@ app.delete('/:version/secrets/:id', async (req, res) => {
   if (await isOwnedSecret(secretId)) {
     try {
       const secret = docker.getSecret(secretId);
-      await secret.remove();
+      await secret.remove({});
       res.status(200).send(`Secret ${secretId} deleted successfully.`);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
@@ -486,7 +531,7 @@ app.delete('/:version/configs/:id', async (req, res) => {
   if (await isOwnedConfig(configId)) {
     try {
       const config = docker.getConfig(configId);
-      await config.remove();
+      await config.remove({});
       res.status(200).send(`Config ${configId} deleted successfully.`);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
@@ -562,6 +607,85 @@ app.get('/:version/distribution/:rest(*)', async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 
+});
+
+
+// volume code
+
+function isVolumeOwned(volume: Docker.VolumeInspectInfo): boolean {
+  return !!(volume.Labels && volume.Labels[label] == labelValue);
+}
+
+async function isOwnedVolume(volumeName: string): Promise<boolean> {
+  try {
+    const volume = await docker.getVolume(volumeName).inspect();
+    return volume.Labels && isVolumeOwned(volume);
+  } catch (error) {
+    console.error(error);
+    return false;
+  }
+}
+
+// Endpoint to create a volume with ownership label
+app.post('/:version/volumes/create', async (req, res) => {
+  const volumeSpec = req.body;
+  volumeSpec.Labels = { ...volumeSpec.Labels, [label]: labelValue };
+
+  try {
+    const volume = await docker.createVolume(volumeSpec);
+    res.status(201).json(volume);
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Endpoint to list all owned volumes
+app.get('/:version/volumes', async (req, res) => {
+  try {
+    const volumes = await docker.listVolumes({
+      filters: req.query.filters as any,
+    });
+    const ownedVolumes = volumes.Volumes.filter(v => isVolumeOwned(v));
+    res.json({
+      Volumes: ownedVolumes,
+      Warnings: volumes.Warnings
+    });
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Endpoint to delete a volume, respecting ownership
+app.delete('/:version/volumes/:name', async (req, res) => {
+  const volumeName = req.params.name;
+
+  if (await isOwnedVolume(volumeName)) {
+    try {
+      const volume = docker.getVolume(volumeName);
+      await volume.remove({});
+      res.status(200).send(`Volume ${volumeName} deleted successfully.`);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  } else {
+    res.status(403).send('Access denied: Volume is not owned.');
+  }
+});
+
+// Endpoint to inspect a volume, respecting ownership
+app.get('/:version/volumes/:name', async (req, res) => {
+  const volumeName = req.params.name;
+
+  if (await isOwnedVolume(volumeName)) {
+    try {
+      const volume = await docker.getVolume(volumeName).inspect();
+      res.json(volume);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  } else {
+    res.status(403).send('Access denied: Volume is not owned.');
+  }
 });
 
 
