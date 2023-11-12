@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "run-dev": "ts-node bin/www"
+    "run-dev": "OWNER_LABEL_VALUE=${OWNER_LABEL_VALUE:-some-owner} ts-node bin/www"
   },
   "keywords": [],
   "author": "",
