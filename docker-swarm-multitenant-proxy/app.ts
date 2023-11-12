@@ -46,10 +46,11 @@ morgan.token('client-cn', (req: any) => {
   return 'Unauthorized';
 });
 
-const clientCertAuthMiddleware = (req: any, res: any, next: any) => {
+const healthMiddleware = (req: any, res: any, next: any) => {
   if(req.path == '/_healthz') {
     const ip = req.ip || req.connection.remoteAddress || req.socket.remoteAddress || req.connection.socket.remoteAddress;
-    if (ip === "127.0.0.1" || ip === "::1") {
+    console.log(ip);
+    if (ip === "127.0.0.1" || ip === "::1" || ip === "::ffff:127.0.0.1") {
       // only respond to healthchecks from inside the container
       (async () => {
         try {
@@ -63,6 +64,10 @@ const clientCertAuthMiddleware = (req: any, res: any, next: any) => {
       return;
     }
   }
+  return next();
+}
+
+const clientCertAuthMiddleware = (req: any, res: any, next: any) => {
   if (TLS_DISABLED) {
     return next();
   }
@@ -74,13 +79,15 @@ const clientCertAuthMiddleware = (req: any, res: any, next: any) => {
     res.status(401).send('Access denied: Invalid client certificate');
   }
 };
-app.use(clientCertAuthMiddleware);
-app.use(bodyParser.json());
 if(!TLS_DISABLED) {
   app.use(morgan(':remote-addr - :remote-user [:date[clf]] ":method :url HTTP/:http-version" :status :res[content-length] ":referrer" ":user-agent" - Client-CN: :client-cn'));
 } else {
   app.use(morgan(':remote-addr - :remote-user [:date[clf]] ":method :url HTTP/:http-version" :status :res[content-length] ":referrer" ":user-agent" - Client-CN: TLS Disabled'))
 }
+app.use(healthMiddleware);
+app.use(clientCertAuthMiddleware);
+app.use(bodyParser.json());
+
 
 // app.use(audit());
 
