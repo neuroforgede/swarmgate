@@ -29,7 +29,7 @@ TODO: Docker installation instructions
 ## Usage:
 
 ```bash
-DOCKER_API_VERSION=1.43 docker -H localhost:8080 info
+docker -H localhost:8080 version
 ```
 
 ## Environment Variables
