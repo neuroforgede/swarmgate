@@ -168,7 +168,7 @@ app.get('/:version/services/:id', async (req, res) => {
   if (await isOwnedService(serviceId)) {
     try {
       const service = await docker.getService(serviceId).inspect({
-        insertDefaults: req.query.insertDefaults === 'true',
+        insertDefaults: req.query.insertDefaults === '1',
       });
       res.json(service);
     } catch (error: any) {
@@ -202,22 +202,22 @@ app.get('/:version/services/:id/logs', async (req, res) => {
     return res.status(403).json({ message: 'Access Denied: Service not owned' });
   }
 
-  // FIXME: This is not working
-  // but probably should be offloaded to nginx anyways
   try {
     const service = docker.getService(serviceId);
     const logStream = await service.logs({
-      stdout: true,
-      stderr: true,
-      follow: true,
-      timestamps: true
+      details: req.query.details === '1',
+      follow: req.query.follow === '1',
+      stdout: req.query.stdout === '1',
+      stderr: req.query.stderr === '1',
+      since: req.query.since as any,
+      timestamps: req.query.timestamps === '1',
+      tail: req.query.tail as any,
     });
 
     res.setHeader('Content-Type', 'text/plain');
     logStream.pipe(res);
 
     req.on('close', () => {
-      console.log("meh")
       // logStream.destroy(); // Ensure to close the stream when the client disconnects
     });
 
