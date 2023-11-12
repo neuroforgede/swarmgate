@@ -5,7 +5,6 @@ import audit from 'express-requests-logger'
 import morgan from 'morgan';
 import * as http from 'http';
 
-export const app = express();
 const docker = new Docker({ socketPath: '/var/run/docker.sock' });
 
 // in production we should not allow the local volume driver if possible
@@ -34,6 +33,8 @@ function isMountTypeAllowed(volumeType: string): boolean {
 function isVolumeDriverAllowed(volumeDriver: string): boolean {
   return ALLOWED_REGULAR_VOLUME_DRIVERS.includes(volumeDriver);
 }
+
+export const app = express();
 
 app.use(bodyParser.json());
 app.use(morgan('combined'))
