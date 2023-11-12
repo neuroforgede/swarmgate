@@ -154,7 +154,8 @@ app.post('/:version/services/:id/update', async (req, res) => {
       updateSpec.registryAuthFrom = req.query.registryAuthFrom;
       updateSpec.rollback = req.query.rollback;
 
-      // TODO: patch containerspec
+      // FIXME: unclear if this is an actual security check
+      // or whether there is actually a way to end up with a bad volume
 
       if(Array.isArray(updateSpec.TaskTemplate.ContainerSpec.Mounts)) {
         for(const mount of updateSpec.TaskTemplate.ContainerSpec.Mounts) {
