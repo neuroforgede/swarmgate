@@ -1,5 +1,7 @@
 # swarmgate - a Docker Swarm Multi-tenant Proxy
 
+![](./logo.png | width=100)
+
 ## Project Overview
 
 You might know this issue with docker swarm setups: Either have many people access the same swarm and possibly step on each others feet or have resources underutilized with separate Swarms.
