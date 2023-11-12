@@ -20,7 +20,7 @@ const labelValue = process.env.OWNER_LABEL_VALUE;
 
 const TLS_DISABLED = process.env.TLS_DISABLED === '1' || process.env.TLS_DISABLED === 'true';
 
-if(!labelValue) {
+if (!labelValue) {
   console.error("OWNER_LABEL_VALUE environment variable is not set.");
   process.exit(1);
 }
@@ -39,21 +39,30 @@ function isVolumeDriverAllowed(volumeDriver: string): boolean {
 
 export const app = express();
 
+if(!TLS_DISABLED) {
+  morgan.token('client-cn', (req: any) => {
+    if (req.client.authorized && req.socket.getPeerCertificate().subject) {
+        return req.socket.getPeerCertificate().subject.CN;
+    }
+    return 'Unauthorized';
+});
+}
+
 const clientCertAuthMiddleware = (req: any, res: any, next: any) => {
-  if(TLS_DISABLED) {
+  if (TLS_DISABLED) {
     return next();
   }
   // Check if the client certificate is present and authorized
   if (req.client.authorized) {
-      next(); // Proceed to the next middleware/route handler
+    next(); // Proceed to the next middleware/route handler
   } else {
-      // If the client is not authorized, return a 401 Unauthorized response
-      res.status(401).send('Access denied: Invalid client certificate');
+    // If the client is not authorized, return a 401 Unauthorized response
+    res.status(401).send('Access denied: Invalid client certificate');
   }
 };
 app.use(clientCertAuthMiddleware);
 app.use(bodyParser.json());
-app.use(morgan('combined'));
+app.use(morgan(':remote-addr - :remote-user [:date[clf]] ":method :url HTTP/:http-version" :status :res[content-length] ":referrer" ":user-agent" - Client-CN: :client-cn'));
 
 // app.use(audit());
 
@@ -61,17 +70,17 @@ app.use(morgan('combined'));
 function pingWithHeaders(): Promise<{ data: string, headers: http.IncomingHttpHeaders }> {
   const socketPath = '/var/run/docker.sock';
   const options = {
-      socketPath,
-      path: '/_ping',
+    socketPath,
+    path: '/_ping',
   };
   return new Promise((resolve, reject) => {
     const request = http.get(options, (res) => {
       let data = '';
-  
+
       res.on('data', (chunk) => {
         data += chunk;
       });
-  
+
       res.on('end', () => {
         resolve({
           data: data,
@@ -79,7 +88,7 @@ function pingWithHeaders(): Promise<{ data: string, headers: http.IncomingHttpHe
         });
       });
     });
-  
+
     request.on('error', (e) => {
       reject(e.message);
     });
@@ -89,7 +98,7 @@ function pingWithHeaders(): Promise<{ data: string, headers: http.IncomingHttpHe
 app.head('/_ping', async (req, res) => {
   try {
     const pingResponse = await pingWithHeaders();
-    for(const key of Object.keys(pingResponse.headers)) {
+    for (const key of Object.keys(pingResponse.headers)) {
       res.header(key, pingResponse.headers[key]);
     }
     res.send();
@@ -102,7 +111,7 @@ app.head('/_ping', async (req, res) => {
 app.get('/_ping', async (req, res) => {
   try {
     const pingResponse = await pingWithHeaders();
-    for(const key of Object.keys(pingResponse.headers)) {
+    for (const key of Object.keys(pingResponse.headers)) {
       res.header(key, pingResponse.headers[key]);
     }
     res.send(pingResponse.data);
@@ -213,7 +222,7 @@ async function isValidTaskTemplate(
 
   if (taskTemplate.Networks) {
     for (const network of taskTemplate.Networks) {
-      if(SERVICE_ALLOW_LISTED_NETWORKS.includes(network.Target)) {
+      if (SERVICE_ALLOW_LISTED_NETWORKS.includes(network.Target)) {
         // explicitly allowed. Example: Traefik Ingress network
         continue;
       }
