@@ -38,7 +38,7 @@ DOCKER_API_VERSION=1.43 docker -H localhost:8080 info
 - ALLOWED_VOLUME_TYPES: Comma-separated list of allowed volume types.
 - ALLOW_PORT_EXPOSE: Set to 1 or true to allow port exposure.
 - OWNER_LABEL_VALUE: Required value for the ownership label.
-- ALLOW_LISTED_NETWORKS: Comma-separated list of networks not owned by the proxy that are allowed to be used.
+- SERVICE_ALLOW_LISTED_NETWORKS: Comma-separated list of networks not owned by the proxy that are allowed to be used.
 
 ## How to achieve Multitenancy with this?
 
