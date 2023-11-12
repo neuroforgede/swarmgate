@@ -5,7 +5,6 @@ var options = {
   timeout: 2000,
   host: 'localhost',
   port: process.env.PORT || 8080,
-  // forward to docker ping
   path: '/_healthz'
 };
 
