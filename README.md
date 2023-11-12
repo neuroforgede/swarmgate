@@ -4,7 +4,8 @@
 
 This project implements a Docker Socket Proxy which is intended to give a tenant specific view onto a Docker Swarm. It exposes all necessary operations to deploy stacks with all features to Docker Swarm as well as management endpoints for volumes, secrets, configs, networks. 
 
-All requests are filtered based on resource labels to check ownership of resources.
+Every proxy can be configured with a unique label to give a tenant specific view onto the swarm. This way you can have multiple teams of people collaborate on the same cluster.
+This is done by filtering all requests on resource labels to check whether the resources are "owned" by the proxy/tenant.
 
 This projects uses Node.js and Express for the server, along with the dockerode (and docker-modem) library to interact with Docker.
 
