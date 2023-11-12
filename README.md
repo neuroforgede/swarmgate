@@ -39,6 +39,11 @@ docker -H localhost:8080 version
 - ALLOW_PORT_EXPOSE: Set to 1 or true to allow port exposure.
 - OWNER_LABEL_VALUE: Required value for the ownership label.
 - SERVICE_ALLOW_LISTED_NETWORKS: Comma-separated list of networks not owned by the proxy that are allowed to be used.
+- TLS_KEY_FILE: Path to TLS key file.
+- TLS_CERT_FILE: Path to TLS cert file.
+- TLS_CERT_FILE: Path to TLS cert file.
+- TLS_DISABLE: Set to 1 or true to disable TLS.
+
 
 ## How to achieve Multitenancy with this?
 
