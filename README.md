@@ -1,8 +1,8 @@
-# swarmgate - a Docker Swarm Multi-tenant Proxy
+# 🌐 swarmgate - a Docker Swarm Multi-tenant Proxy
 
 ![Swarm Gate Logo](./logo250.png "Swarm Gate Logo")
 
-## Project Overview
+## 📋 Project Overview
 
 You might know this issue with docker swarm setups: Either have many people access the same swarm and possibly step on each others feet or have resources underutilized with separate Swarms.
 
@@ -13,7 +13,7 @@ This is done by filtering all requests on resource labels to check whether the r
 
 This projects uses Node.js and Express for the server, along with the dockerode (and docker-modem) library to interact with Docker.
 
-## Features
+## ⭐ Features
 
 - Multi-tenant Access Control: Restricts access to Docker Swarm resources based on ownership labels.
 - Environment Variable Configuration: Uses environment variables to control various aspects like allowed volume drivers, volume types, and port exposure.
@@ -22,12 +22,12 @@ This projects uses Node.js and Express for the server, along with the dockerode 
 - Ability to turn off local volumes.
 - Ability to turn off port exposure.
 
-## Prerequisites
+## 🛠️ Prerequisites
 
 - Docker Swarm environment
 - Access to Docker socket
 
-## Installation
+## 💾 Installation
 
 To deploy a docker socket proxy, you will first have to generate some certs. As an example, you can look into the `deploy` folder of this repository.
 
@@ -97,7 +97,7 @@ my_proxy_app.1.92wjwd0fz492@ubuntu    | ::ffff:10.0.0.2 - - [12/Nov/2023:18:41:0
 my_proxy_app.1.92wjwd0fz492@ubuntu    | ::ffff:10.0.0.2 - - [12/Nov/2023:18:41:00 +0000] "GET /v1.43/info HTTP/1.1" 200 3858 "-" "Docker-Client/24.0.5 (linux)" - Client-CN: Client
 ```
 
-## Environment Variables
+## 🔧 Environment Variables
 
 - ALLOWED_REGULAR_VOLUMES_DRIVERS: Comma-separated list of allowed volume drivers.
 - ALLOWED_VOLUME_TYPES: Comma-separated list of allowed volume types.
@@ -110,10 +110,10 @@ my_proxy_app.1.92wjwd0fz492@ubuntu    | ::ffff:10.0.0.2 - - [12/Nov/2023:18:41:0
 - TLS_DISABLE: Set to 1 or true to disable TLS.
 
 
-## How to achieve Multitenancy with this?
+## 🤝 How to achieve Multitenancy with this?
 
 The general idea here is to deploy one proxy per tenant. The proxy is then configured with a label that identifies the tenant. All resources deployed by the proxy will be labeled with the tenant label. The proxy will then filter all requests based on the tenant label. This allows for a multi-tenant Docker Swarm environment.
 
-## Contributions
+## 🙌 Contributions
 
 Contributions are welcome! Please fork the repository and submit pull requests with your changes. For major changes, please open an issue first to discuss what you would like to change.
