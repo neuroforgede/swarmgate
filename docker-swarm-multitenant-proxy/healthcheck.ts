@@ -15,7 +15,7 @@ if (!TLS_DISABLED) {
     timeout: 2000,
     host: 'localhost',
     port: process.env.PORT || 8080,
-    path: '/_healthz',
+    path: '/_ping',
     key: fs.readFileSync(process.env.TLS_KEY_FILE),
     cert: fs.readFileSync(process.env.TLS_CERT_FILE),
     ca: fs.readFileSync(process.env.TLS_CA_FILE),

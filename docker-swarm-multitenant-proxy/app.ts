@@ -46,27 +46,6 @@ morgan.token('client-cn', (req: any) => {
   return 'Unauthorized';
 });
 
-const healthMiddleware = (req: any, res: any, next: any) => {
-  if(req.path == '/_healthz') {
-    const ip = req.ip || req.connection.remoteAddress || req.socket.remoteAddress || req.connection.socket.remoteAddress;
-    console.log(ip);
-    if (ip === "127.0.0.1" || ip === "::1" || ip === "::ffff:127.0.0.1") {
-      // only respond to healthchecks from inside the container
-      (async () => {
-        try {
-          await docker.ping();
-          res.status(200).send("OK");
-        } catch(err: any) {
-          console.error(err);
-          res.status(500).send("error");
-        }
-      })();
-      return;
-    }
-  }
-  return next();
-}
-
 const clientCertAuthMiddleware = (req: any, res: any, next: any) => {
   if (TLS_DISABLED) {
     return next();
@@ -83,8 +62,7 @@ if(!TLS_DISABLED) {
   app.use(morgan(':remote-addr - :remote-user [:date[clf]] ":method :url HTTP/:http-version" :status :res[content-length] ":referrer" ":user-agent" - Client-CN: :client-cn'));
 } else {
   app.use(morgan(':remote-addr - :remote-user [:date[clf]] ":method :url HTTP/:http-version" :status :res[content-length] ":referrer" ":user-agent" - Client-CN: TLS Disabled'))
-}
-app.use(healthMiddleware);
+};
 app.use(clientCertAuthMiddleware);
 app.use(bodyParser.json());
 
