@@ -73,7 +73,6 @@ function pingWithHeaders(): Promise<{ data: string, headers: http.IncomingHttpHe
 app.head('/_ping', async (req, res) => {
   try {
     const pingResponse = await pingWithHeaders();
-    
     for(const key of Object.keys(pingResponse.headers)) {
       res.header(key, pingResponse.headers[key]);
     }
@@ -87,7 +86,6 @@ app.head('/_ping', async (req, res) => {
 app.get('/_ping', async (req, res) => {
   try {
     const pingResponse = await pingWithHeaders();
-    
     for(const key of Object.keys(pingResponse.headers)) {
       res.header(key, pingResponse.headers[key]);
     }
