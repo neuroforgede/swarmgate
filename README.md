@@ -1,4 +1,4 @@
-# Docker Swarm Multi-tenant Proxy
+# swarmgate - a Docker Swarm Multi-tenant Proxy
 
 ## Project Overview
 
