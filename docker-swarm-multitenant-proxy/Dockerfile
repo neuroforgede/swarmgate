@@ -41,6 +41,9 @@ WORKDIR /opt/node_app/app
 COPY --chown=node:node . .
 RUN npx tsc
 
+# make it root so that the docker socket works
+USER root
+
 # if you want to use npm start instead, then use `docker run --init in production`
 # so that signals are passed properly. Note the code in index.js is needed to catch Docker signals
 # using node here is still more graceful stopping then npm with --init afaik
