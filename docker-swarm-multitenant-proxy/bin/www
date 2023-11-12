@@ -10,9 +10,28 @@ const PORT = process.env.PORT || 8080;
 // to prevent non-root permission problems with 80. Dockerfile is set to make this 80
 // because containers don't have that issue :)
 
-const server = app.listen(PORT, function () {
-  console.log(`Docker Swarm Multitenant Proxy is ready and listening on port ${PORT}`);
-});
+let server;
+const TLS_DISABLED = process.env.TLS_DISABLED === '1' || process.env.TLS_DISABLED === 'true';
+if (!TLS_DISABLED) {
+  console.log('TLS is enabled');
+
+  if(!process.env.TLS_KEY_FILE || !process.env.TLS_CERT_FILE || !process.env.TLS_CA_FILE) {
+    console.error('ERROR: TLS is enabled but one or more of the following environment variables are not set: TLS_KEY_FILE, TLS_CERT_FILE, TLS_CA_FILE');
+  }
+  const options = {
+    key: fs.readFileSync(process.env.TLS_KEY_FILE),
+    cert: fs.readFileSync(process.env.TLS_CERT_FILE),
+    ca: fs.readFileSync(process.env.TLS_CA_FILE),
+    requestCert: true, // Server will request a certificate from clients - this is required for docker authentication
+    rejectUnauthorized: true // Reject any connection not authorized with the CA certificate
+  };
+  server = https.createServer(options, app);
+} else {
+  console.warn('WARNING: TLS is disabled. Only use this in development.');
+  server = app.listen(PORT, function () {
+    console.log(`Docker Swarm Multitenant Proxy is ready and listening on port ${PORT}`);
+  });
+}
 
 //
 // need this in docker container to properly exit since node doesn't handle SIGINT/SIGTERM
@@ -70,8 +89,7 @@ function shutdown() {
 function waitForSocketsToClose(counter) {
   if (counter > 0) {
     console.log(
-      `Waiting ${counter} more ${
-        counter !== 1 ? "seconds" : "second"
+      `Waiting ${counter} more ${counter !== 1 ? "seconds" : "second"
       } for all connections to close...`
     );
     return setTimeout(waitForSocketsToClose, 1000, counter - 1);
