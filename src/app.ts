@@ -59,7 +59,7 @@ app.get('/:version/nodes', async (req, res) => {
   try {
     // Fetching all nodes
     const nodes = await docker.listNodes();
-    
+
     // Since we don't modify nodes and there's no concept of ownership,
     // we directly return all nodes. Modify this as per your requirement.
     res.json(nodes);
@@ -80,7 +80,7 @@ app.get('/:version/info', async (req, res) => {
 
 // Services
 function isServiceOwned(service: Docker.Service): boolean {
-  if(!service.Spec?.Labels) {
+  if (!service.Spec?.Labels) {
     return false;
   }
   return service.Spec?.Labels[label] == labelValue;
@@ -99,11 +99,11 @@ async function isOwnedService(serviceId: string): Promise<boolean> {
 app.post('/:version/services/create', async (req, res) => {
   // Add ownership label to the service creation request
   const serviceSpec = req.body;
-  serviceSpec.Labels = {...serviceSpec.Labels, [label]: labelValue};
+  serviceSpec.Labels = { ...serviceSpec.Labels, [label]: labelValue };
 
   try {
     const authHeader = req.headers['X-Registry-Auth'];
-    if(authHeader) {
+    if (authHeader) {
       const auth = JSON.parse(Buffer.from(authHeader as string, 'base64').toString('utf-8'));
       const service = await docker.createService(auth, serviceSpec);
       res.status(201).json(service);
@@ -122,14 +122,14 @@ app.post('/:version/services/:id/update', async (req, res) => {
   if (await isOwnedService(serviceId)) {
     try {
       const authHeader = req.headers['X-Registry-Auth'];
-      updateSpec.Labels = {...updateSpec.Labels, [label]: labelValue};
+      updateSpec.Labels = { ...updateSpec.Labels, [label]: labelValue };
       updateSpec.version = req.query.version;
       updateSpec.registryAuthFrom = req.query.registryAuthFrom;
       updateSpec.rollback = req.query.rollback;
 
       const service = docker.getService(serviceId);
 
-      if(authHeader) {
+      if (authHeader) {
         const auth = JSON.parse(Buffer.from(authHeader as string, 'base64').toString('utf-8'));
         const response = await service.update(auth, updateSpec);
         res.json(response);
@@ -150,11 +150,32 @@ app.post('/:version/services/:id/update', async (req, res) => {
 
 app.get('/:version/services', async (req, res) => {
   try {
-    const services = await docker.listServices();
+    // TODO: push down filtering
+    const services = await docker.listServices({
+      filters: req.query.filters as any,
+      status: req.query.status as any,
+    });
     const ownedServices = services.filter(s => isServiceOwned(s));
     res.json(ownedServices);
   } catch (error: any) {
     res.status(500).json({ message: error.message });
+  }
+});
+
+app.get('/:version/services/:id', async (req, res) => {
+  const serviceId = req.params.id;
+
+  if (await isOwnedService(serviceId)) {
+    try {
+      const service = await docker.getService(serviceId).inspect({
+        insertDefaults: req.query.insertDefaults === 'true',
+      });
+      res.json(service);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  } else {
+    res.status(403).send('Access denied: Service is not owned.');
   }
 });
 
@@ -174,13 +195,15 @@ app.delete('/:version/services/:id', async (req, res) => {
   }
 });
 
-app.get('/services/:id/logs', async (req, res) => {
+app.get('/:version/services/:id/logs', async (req, res) => {
   const serviceId = req.params.id;
 
   if (!(await isOwnedService(serviceId))) {
     return res.status(403).json({ message: 'Access Denied: Service not owned' });
   }
 
+  // FIXME: This is not working
+  // but probably should be offloaded to nginx anyways
   try {
     const service = docker.getService(serviceId);
     const logStream = await service.logs({
@@ -218,6 +241,32 @@ app.get('/:version/tasks', async (req, res) => {
     res.json(ownedTasks);
   } catch (error: any) {
     res.status(500).json({ message: error.message });
+  }
+});
+
+async function isTaskOfOwnedService(taskId: string): Promise<boolean> {
+  try {
+    const task = await docker.getTask(taskId).inspect();
+    return isOwnedService(task.ServiceID);
+  } catch (error) {
+    console.error(error);
+    return false;
+  }
+}
+
+// Endpoint to inspect a task, ensuring it belongs to an owned service
+app.get('/:version/tasks/:id', async (req, res) => {
+  const taskId = req.params.id;
+
+  if (await isTaskOfOwnedService(taskId)) {
+    try {
+      const task = await docker.getTask(taskId).inspect();
+      res.json(task);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  } else {
+    res.status(403).send('Access denied: Task does not belong to an owned service.');
   }
 });
 
@@ -376,7 +425,7 @@ app.post('/:version/secrets/:id/update', async (req, res) => {
   if (await isOwnedSecret(secretId)) {
     const secretSpec = req.body;
     secretSpec.Labels = { ...secretSpec.Labels, [label]: labelValue };
-    try {      
+    try {
       secretSpec.version = req.query.version;
       const secret = docker.getSecret(secretId);
       const secretInfo = await secret.update(secretSpec);
@@ -472,7 +521,7 @@ app.post('/:version/configs/:id/update', async (req, res) => {
   if (await isOwnedConfig(configId)) {
     const configSpec = req.body;
     configSpec.Labels = { ...configSpec.Labels, [label]: labelValue };
-    try {      
+    try {
       configSpec.version = req.query.version;
       const config = docker.getConfig(configId);
       const configInfo = await config.update(configSpec);
@@ -485,43 +534,34 @@ app.post('/:version/configs/:id/update', async (req, res) => {
   }
 });
 
-
-// distribution
-
-function makeDockerRequest(options: any, callback: any) {
-  const requestOptions = {
-    ...options,
-    socketPath: '/var/run/docker.sock',
-    path: 'http://unix:/var/run/docker.sock:' + options.path,
-  };
-
-  return http.request(requestOptions, callback);
-}
-
-app.get('/:version/distribution/:rest(*)', (req, res) => {
+app.get('/:version/distribution/:rest(*)', async (req, res) => {
   const rest = req.params.rest;
-  console.log(rest);
+  try {
+    var optsf = {
+      path: '/distribution/' + rest,
+      method: 'GET',
+      statusCodes: {
+        200: true,
+        404: 'no such service',
+        500: 'server error'
+      },
+      headers: req.headers
+    };
 
-  const dockerReq = makeDockerRequest({
-    method: 'GET',
-    path: `/${req.params.version}/distribution/${rest}`,
-  }, (dockerRes: any) => {
-    let data = '';
-
-    dockerRes.on('data', (chunk: any) => {
-      data += chunk;
+    const ret = await new docker.modem.Promise(function (resolve, reject) {
+      docker.modem.dial(optsf, function (err, data) {
+        if (err) {
+          return reject(err);
+        }
+        resolve(data);
+      });
     });
-
-    dockerRes.on('end', () => {
-      res.send(data);
-    });
-  });
-
-  dockerReq.on('error', (error) => {
+    res.send(ret);
+  } catch (error: any) {
+    console.log(error);
     res.status(500).json({ message: error.message });
-  });
+  }
 
-  dockerReq.end();
 });
 
 
