@@ -18,6 +18,8 @@ const SERVICE_ALLOW_LISTED_NETWORKS = process.env.ALLOW_LISTED_NETWORKS?.split('
 const label = "com.github.com/nfcompose/docker-swarm-multitenant-proxy";
 const labelValue = process.env.OWNER_LABEL_VALUE;
 
+const TLS_ENABLED = process.env.TLS_ENABLED === '1' || process.env.TLS_ENABLED === 'true';
+
 if(!labelValue) {
   console.error("OWNER_LABEL_VALUE environment variable is not set.");
   process.exit(1);
@@ -37,8 +39,22 @@ function isVolumeDriverAllowed(volumeDriver: string): boolean {
 
 export const app = express();
 
+const clientCertAuthMiddleware = (req: any, res: any, next: any) => {
+  if(!TLS_ENABLED) {
+    return next();
+  }
+  // Check if the client certificate is present and authorized
+  if (req.client.authorized) {
+      next(); // Proceed to the next middleware/route handler
+  } else {
+      // If the client is not authorized, return a 401 Unauthorized response
+      res.status(401).send('Access denied: Invalid client certificate');
+  }
+};
+app.use(clientCertAuthMiddleware);
 app.use(bodyParser.json());
-app.use(morgan('combined'))
+app.use(morgan('combined'));
+
 // app.use(audit());
 
 // manually call the docker socket to return all relevant headers
