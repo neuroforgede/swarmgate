@@ -6,7 +6,7 @@ var options = {
   host: 'localhost',
   port: process.env.PORT || 8080,
   // forward to docker ping
-  path: '/_ping'
+  path: '/_healthz'
 };
 
 var request = http.request(options, (res) => {

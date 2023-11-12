@@ -3,6 +3,7 @@ import Docker from 'dockerode';
 import bodyParser from 'body-parser';
 import morgan from 'morgan';
 import * as http from 'http';
+import { resolveTypeReferenceDirective } from 'typescript';
 
 const docker = new Docker({ socketPath: '/var/run/docker.sock' });
 
@@ -46,6 +47,22 @@ morgan.token('client-cn', (req: any) => {
 });
 
 const clientCertAuthMiddleware = (req: any, res: any, next: any) => {
+  if(req.path == '/_healthz') {
+    const ip = req.ip || req.connection.remoteAddress || req.socket.remoteAddress || req.connection.socket.remoteAddress;
+    if (ip === "127.0.0.1" || ip === "::1") {
+      // only respond to healthchecks from inside the container
+      (async () => {
+        try {
+          await docker.ping();
+          res.status(200).send("OK");
+        } catch(err: any) {
+          console.error(err);
+          res.status(500).send("error");
+        }
+      })();
+      return;
+    }
+  }
   if (TLS_DISABLED) {
     return next();
   }
