@@ -2,7 +2,9 @@
 
 ## Project Overview
 
-This project implements a Docker Socket Proxy which is intended to give a tenant specific view onto a Docker Swarm. It exposes all necessary operations to deploy stacks with all features to Docker Swarm as well as management endpoints for volumes, secrets, configs, networks. 
+You might know this issue with docker swarm setups: Either have many people access the same swarm and possibly step on each others feet or have resources underutilized with separate Swarms.
+
+This project aims to alleviate this. We implement a Docker Socket Proxy which is intended to give a tenant specific view onto a Docker Swarm. It exposes all necessary operations to deploy stacks with all features to Docker Swarm as well as management endpoints for volumes, secrets, configs, networks. 
 
 Every proxy can be configured with a unique label to give a tenant specific view onto the swarm. This way you can have multiple teams of people collaborate on the same cluster.
 This is done by filtering all requests on resource labels to check whether the resources are "owned" by the proxy/tenant.
