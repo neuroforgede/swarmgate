@@ -1,6 +1,6 @@
 # swarmgate - a Docker Swarm Multi-tenant Proxy
 
-![](./logo.png | width=100)
+![](./logo.png)
 
 ## Project Overview
 
