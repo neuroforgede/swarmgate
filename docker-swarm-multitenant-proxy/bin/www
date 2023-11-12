@@ -13,6 +13,8 @@ const PORT = process.env.PORT || 8080;
 let server;
 const TLS_DISABLED = process.env.TLS_DISABLED === '1' || process.env.TLS_DISABLED === 'true';
 if (!TLS_DISABLED) {
+  const fs = require('fs');
+  const https = require('https');
   console.log('TLS is enabled');
 
   if(!process.env.TLS_KEY_FILE || !process.env.TLS_CERT_FILE || !process.env.TLS_CA_FILE) {
@@ -26,6 +28,9 @@ if (!TLS_DISABLED) {
     rejectUnauthorized: true // Reject any connection not authorized with the CA certificate
   };
   server = https.createServer(options, app);
+  server.listen(PORT, function () {
+    console.log(`Docker Swarm Multitenant Proxy is ready and listening on port ${PORT}`);
+  });
 } else {
   console.warn('WARNING: TLS is disabled. Only use this in development.');
   server = app.listen(PORT, function () {
