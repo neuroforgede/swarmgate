@@ -39,14 +39,12 @@ function isVolumeDriverAllowed(volumeDriver: string): boolean {
 
 export const app = express();
 
-if(!TLS_DISABLED) {
-  morgan.token('client-cn', (req: any) => {
-    if (req.client.authorized && req.socket.getPeerCertificate().subject) {
-        return req.socket.getPeerCertificate().subject.CN;
-    }
-    return 'Unauthorized';
+morgan.token('client-cn', (req: any) => {
+  if (req.client.authorized && req.socket.getPeerCertificate().subject) {
+      return req.socket.getPeerCertificate().subject.CN;
+  }
+  return 'Unauthorized';
 });
-}
 
 const clientCertAuthMiddleware = (req: any, res: any, next: any) => {
   if (TLS_DISABLED) {
@@ -62,7 +60,11 @@ const clientCertAuthMiddleware = (req: any, res: any, next: any) => {
 };
 app.use(clientCertAuthMiddleware);
 app.use(bodyParser.json());
-app.use(morgan(':remote-addr - :remote-user [:date[clf]] ":method :url HTTP/:http-version" :status :res[content-length] ":referrer" ":user-agent" - Client-CN: :client-cn'));
+if(!TLS_DISABLED) {
+  app.use(morgan(':remote-addr - :remote-user [:date[clf]] ":method :url HTTP/:http-version" :status :res[content-length] ":referrer" ":user-agent" - Client-CN: :client-cn'));
+} else {
+  app.use(morgan(':remote-addr - :remote-user [:date[clf]] ":method :url HTTP/:http-version" :status :res[content-length] ":referrer" ":user-agent" - Client-CN: TLS Disabled'))
+}
 
 // app.use(audit());
 
