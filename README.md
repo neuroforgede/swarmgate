@@ -36,7 +36,7 @@ version: '3.8'
 
 services:
   proxy:
-    image: ghcr.io/s4ke/docker-swarm-multitenant-proxy:0.2.7
+    image: ghcr.io/neuroforgede/swarmgate:0.2.7
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
