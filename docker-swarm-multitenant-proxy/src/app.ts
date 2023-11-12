@@ -41,31 +41,67 @@ app.use(bodyParser.json());
 app.use(morgan('combined'))
 // app.use(audit());
 
-app.head('/_ping', (req, res) => {
-  // Check if the docker daemon is reachable
-  docker.ping((err, data) => {
-    if (err) {
-      res.status(500).json({ message: err.message });
-    } else {
-      res.status(200).send();
-    }
+// manually call the docker socket to return all relevant headers
+function pingWithHeaders(): Promise<{ data: string, headers: http.IncomingHttpHeaders }> {
+  const socketPath = '/var/run/docker.sock';
+  const options = {
+      socketPath,
+      path: '/_ping',
+  };
+  return new Promise((resolve, reject) => {
+    const request = http.get(options, (res) => {
+      let data = '';
+  
+      res.on('data', (chunk) => {
+        data += chunk;
+      });
+  
+      res.on('end', () => {
+        resolve({
+          data: data,
+          headers: res.headers
+        });
+      });
+    });
+  
+    request.on('error', (e) => {
+      reject(e.message);
+    });
   });
+}
+
+app.head('/_ping', async (req, res) => {
+  try {
+    const pingResponse = await pingWithHeaders();
+    
+    for(const key of Object.keys(pingResponse.headers)) {
+      res.header(key, pingResponse.headers[key]);
+    }
+    res.send();
+  } catch (error: any) {
+    console.log(error);
+    res.status(500).json({ message: error.message });
+  }
 });
 
-app.get('/_ping', (req, res) => {
-  // Check if the docker daemon is reachable
-  docker.ping((err, data) => {
-    if (err) {
-      res.status(500).json({ message: err.message });
-    } else {
-      res.status(200).send();
+app.get('/_ping', async (req, res) => {
+  try {
+    const pingResponse = await pingWithHeaders();
+    
+    for(const key of Object.keys(pingResponse.headers)) {
+      res.header(key, pingResponse.headers[key]);
     }
-  });
+    res.send(pingResponse.data);
+  } catch (error: any) {
+    console.log(error);
+    res.status(500).json({ message: error.message });
+  }
 });
 
 app.get('/version', async (req, res) => {
   try {
     const versionInfo = await docker.version();
+    console.log(versionInfo);
     res.json(versionInfo);
   } catch (error: any) {
     res.status(500).json({ message: error.message });
@@ -74,6 +110,8 @@ app.get('/version', async (req, res) => {
 
 app.get('/:version/version', async (req, res) => {
   try {
+    const version = req.params.version;
+    console.log(`Received version request for API version: ${version}`);
     const versionInfo = await docker.version();
     res.json(versionInfo);
   } catch (error: any) {
