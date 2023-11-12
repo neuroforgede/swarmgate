@@ -12,11 +12,11 @@
   "author": "",
   "license": "ISC",
   "devDependencies": {
-    "@types/express": "^4.17.21",
-    "@types/node": "^20.9.0",
     "ts-node": "^10.9.1"
   },
   "dependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.9.0",
     "@types/dockerode": "^3.3.23",
     "@types/express-requests-logger": "^3.0.4",
     "@types/morgan": "^1.9.9",
