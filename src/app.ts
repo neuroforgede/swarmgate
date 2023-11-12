@@ -143,7 +143,7 @@ type TaskTemplate = {
 // returns true if we should continue
 async function isValidTaskTemplate(
   res: express.Response,
-  taskTemplate:TaskTemplate): Promise<boolean> {
+  taskTemplate: TaskTemplate): Promise<boolean> {
   const containerSpec = taskTemplate?.ContainerSpec;
   if (taskTemplate?.Runtime != 'plugin' && taskTemplate?.Runtime != 'attachment') {
     if (!containerSpec) {
@@ -152,18 +152,18 @@ async function isValidTaskTemplate(
     }
   }
 
-  if(taskTemplate.Networks) {
-    for(const network of taskTemplate.Networks) {
-      if(!await isOwnedNetwork(network.Target)) {
+  if (taskTemplate.Networks) {
+    for (const network of taskTemplate.Networks) {
+      if (!await isOwnedNetwork(network.Target)) {
         res.status(403).send(`Access denied: Network ${network.Target} is not owned.`);
         return false;
       }
     }
   }
 
-  if(taskTemplate.EndpointSpec?.Ports) { 
-    for(const port of taskTemplate.EndpointSpec.Ports) {
-      if(!ALLOW_PORT_EXPOSE) {
+  if (taskTemplate.EndpointSpec?.Ports) {
+    for (const port of taskTemplate.EndpointSpec.Ports) {
+      if (!ALLOW_PORT_EXPOSE) {
         res.status(403).send(`Access denied: Exposing ports is not allowed.`);
         return false;
       }
@@ -189,11 +189,11 @@ async function isValidTaskTemplate(
     }
     if (Array.isArray(containerSpec.Mounts)) {
       for (const mount of (taskTemplate as any).ContainerSpec.Mounts) {
-        if(!isKnownMountType(mount.Type)) {
+        if (!isKnownMountType(mount.Type)) {
           res.status(400).send(`Mount type ${mount.Type} is not supported.`);
           return false;
         }
-        if(!isMountTypeAllowed(mount.Type)) {
+        if (!isMountTypeAllowed(mount.Type)) {
           res.status(400).send(`Mount type ${mount.Type} is not allowed.`);
           return false;
         }
@@ -238,7 +238,7 @@ app.post('/:version/services/create', async (req, res) => {
     }
 
     serviceSpec.Labels = { ...serviceSpec.Labels, [label]: labelValue };
-    if(taskTemplate.ContainerSpec) {
+    if (taskTemplate.ContainerSpec) {
       taskTemplate.ContainerSpec.Labels = { ...taskTemplate.ContainerSpec.Labels || {}, [label]: labelValue };
     }
 
@@ -266,14 +266,14 @@ app.post('/:version/services/:id/update', async (req, res) => {
     try {
       const taskTemplate: TaskTemplate = updateSpec.TaskTemplate as any;
 
-      if(taskTemplate) {
+      if (taskTemplate) {
         // might be null in case of rollback
         if (!await isValidTaskTemplate(res, taskTemplate)) {
           return;
         }
 
         updateSpec.Labels = { ...updateSpec.Labels, [label]: labelValue };
-        if(taskTemplate.ContainerSpec) {
+        if (taskTemplate.ContainerSpec) {
           taskTemplate.ContainerSpec.Labels = { ...taskTemplate.ContainerSpec.Labels || {}, [label]: labelValue };
         }
       }
@@ -324,7 +324,7 @@ app.get('/:version/services/:id', async (req, res) => {
   if (await isOwnedService(serviceId)) {
     try {
       const service = await docker.getService(serviceId).inspect({
-        insertDefaults: req.query.insertDefaults === '1',
+        insertDefaults: req.query.insertDefaults === '1' || req.query.insertDefaults === 'true',
       });
       res.json(service);
     } catch (error: any) {
@@ -361,12 +361,12 @@ app.get('/:version/services/:id/logs', async (req, res) => {
   try {
     const service = docker.getService(serviceId);
     const logStream = await service.logs({
-      details: req.query.details === '1',
-      follow: req.query.follow === '1',
-      stdout: req.query.stdout === '1',
-      stderr: req.query.stderr === '1',
+      details: req.query.details === '1' || req.query.details === 'true',
+      follow: req.query.follow === '1' || req.query.follow === 'true',
+      stdout: req.query.stdout === '1' || req.query.stdout === 'true',
+      stderr: req.query.stderr === '1' || req.query.stderr === 'true',
       since: req.query.since as any,
-      timestamps: req.query.timestamps === '1',
+      timestamps: req.query.timestamps === '1' || req.query.timestamps === 'true',
       tail: req.query.tail as any,
     });
 
@@ -385,7 +385,10 @@ app.get('/:version/services/:id/logs', async (req, res) => {
 // Endpoint to list tasks, showing only those related to owned services
 app.get('/:version/tasks', async (req, res) => {
   try {
-    const tasks = await docker.listTasks();
+    const filters = req.query.filters as any;
+    const tasks = await docker.listTasks({
+      filters: filters
+    });
     const ownedTasks = [];
 
     for (const task of tasks) {
@@ -494,7 +497,12 @@ app.get('/:version/networks/:id', async (req, res) => {
   if (await isOwnedNetwork(networkId)) {
     try {
       const network = docker.getNetwork(networkId);
-      const networkInfo = await network.inspect();
+
+      // typing is borked, dockerode supports this
+      const networkInfo = await (network as any).inspect({
+        verbose: req.query.verbose,
+        scope: req.query.scope,
+      });
       res.json(networkInfo);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
@@ -702,37 +710,6 @@ app.post('/:version/configs/:id/update', async (req, res) => {
   }
 });
 
-app.get('/:version/distribution/:rest(*)', async (req, res) => {
-  const rest = req.params.rest;
-  try {
-    var optsf = {
-      path: '/distribution/' + rest,
-      method: 'GET',
-      statusCodes: {
-        200: true,
-        404: 'no such service',
-        500: 'server error'
-      },
-      headers: req.headers
-    };
-
-    const ret = await new docker.modem.Promise(function (resolve, reject) {
-      docker.modem.dial(optsf, function (err, data) {
-        if (err) {
-          return reject(err);
-        }
-        resolve(data);
-      });
-    });
-    res.send(ret);
-  } catch (error: any) {
-    console.log(error);
-    res.status(500).json({ message: error.message });
-  }
-
-});
-
-
 // volume code
 
 function isVolumeOwned(volume: Docker.VolumeInspectInfo): boolean {
@@ -805,11 +782,13 @@ app.get('/:version/volumes', async (req, res) => {
 // Endpoint to delete a volume, respecting ownership
 app.delete('/:version/volumes/:name', async (req, res) => {
   const volumeName = req.params.name;
-
+  
   if (await isOwnedVolume(volumeName)) {
     try {
       const volume = docker.getVolume(volumeName);
-      await volume.remove({});
+      await volume.remove({
+        force: req.query.force === '1' || req.query.force === 'true'
+      });
       res.status(200).send(`Volume ${volumeName} deleted successfully.`);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
@@ -870,6 +849,36 @@ app.put('/:version/volumes/:name', async (req, res) => {
   }
 });
 
+
+app.get('/:version/distribution/:rest(*)', async (req, res) => {
+  const rest = req.params.rest;
+  try {
+    var optsf = {
+      path: '/distribution/' + rest,
+      method: 'GET',
+      statusCodes: {
+        200: true,
+        404: 'no such service',
+        500: 'server error'
+      },
+      headers: req.headers
+    };
+
+    const ret = await new docker.modem.Promise(function (resolve, reject) {
+      docker.modem.dial(optsf, function (err, data) {
+        if (err) {
+          return reject(err);
+        }
+        resolve(data);
+      });
+    });
+    res.send(ret);
+  } catch (error: any) {
+    console.log(error);
+    res.status(500).json({ message: error.message });
+  }
+
+});
 
 // Add other endpoints as needed
 
