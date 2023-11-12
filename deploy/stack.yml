@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   app:
-    image: ghcr.io/s4ke/docker-swarm-multitenant-proxy:0.2.1
+    image: ghcr.io/s4ke/docker-swarm-multitenant-proxy:0.2.2
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
