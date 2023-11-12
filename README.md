@@ -13,6 +13,18 @@ This is done by filtering all requests on resource labels to check whether the r
 
 This projects uses Node.js and Express for the server, along with the dockerode (and docker-modem) library to interact with Docker.
 
+```mermaid
+sequenceDiagram
+    participant User as Tenant User
+    participant Proxy as Tenant Proxy
+    participant Swarm as Docker Swarm
+
+    User->>+Proxy: Sends Docker Commands
+    Proxy->>+Swarm: Filters & Forwards Commands
+    Swarm-->>-Proxy: Returns Results
+    Proxy-->>-User: Shows Filtered Results
+```
+
 ## ⭐ Features
 
 - Multi-tenant Access Control: Restricts access to Docker Swarm resources based on ownership labels.
