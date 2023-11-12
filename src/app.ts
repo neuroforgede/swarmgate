@@ -15,6 +15,14 @@ const KNOWN_VOLUME_TYPES = ['bind', 'volume', 'tmpfs', 'npipe', 'cluster'];
 const ALLOWED_VOLUME_TYPES = ['bind', 'volume', 'tmpfs', 'npipe', 'cluster'];
 const ALLOW_PORT_EXPOSE = true;
 
+const label = "com.github.com/nfcompose/docker-swarm-multitenant-proxy";
+const labelValue = process.env.OWNER_LABEL_VALUE;
+
+if(!labelValue) {
+  console.error("OWNER_LABEL_VALUE environment variable is not set.");
+  process.exit(1);
+}
+
 function isKnownMountType(volumeType: string): boolean {
   return KNOWN_VOLUME_TYPES.includes(volumeType);
 }
@@ -26,9 +34,6 @@ function isMountTypeAllowed(volumeType: string): boolean {
 function isVolumeDriverAllowed(volumeDriver: string): boolean {
   return ALLOWED_REGULAR_VOLUME_DRIVERS.includes(volumeDriver);
 }
-
-const label = "owned-by";
-const labelValue = "secret-value";
 
 app.use(bodyParser.json());
 app.use(morgan('combined'))
