@@ -24,12 +24,72 @@ This projects uses Node.js and Express for the server, along with the dockerode 
 
 ## Installation
 
-TODO: Docker installation instructions
+To deploy a docker socket proxy, you will first have to generate some certs. As an example, you can look into the `deploy` folder of this repository.
 
-## Usage:
+Then, you can deploy the proxy using the following stack file:
+
+```yaml
+version: '3.8'
+
+services:
+  proxy:
+    image: ghcr.io/s4ke/docker-swarm-multitenant-proxy:0.2.7
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - OWNER_LABEL_VALUE=your-owner-label-value
+      - ALLOWED_REGULAR_VOLUMES_DRIVERS=local
+      - ALLOWED_VOLUME_TYPES=bind,volume,tmpfs,npipe,cluster
+      - ALLOW_PORT_EXPOSE=true
+      - TLS_KEY_FILE=/run/secrets/tls_key
+      - TLS_CERT_FILE=/run/secrets/tls_cert
+      - TLS_CA_FILE=/run/secrets/tls_ca
+      - TLS_DISABLE=false
+    user: root
+    secrets:
+      - tls_key
+      - tls_cert
+      - tls_ca
+    ports:
+      - "8080:8080"
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+
+secrets:
+  tls_key:
+    file: ./server-key.pem
+  tls_cert:
+    file: ./server-cert.pem
+  tls_ca:
+    file: ./ca-cert.pem
+```
+
+To deploy, run:
 
 ```bash
-docker -H localhost:8080 version
+docker stack deploy -c docker-compose.yml proxy
+```
+
+To use the proxy, you can then simply use the docker cli. For example:
+
+```bash
+TLS_CERT_FILE="$(pwd)/client-cert.pem"
+TLS_KEY_FILE="$(pwd)/client-key.pem"
+TLS_CA_FILE="$(pwd)/ca-cert.pem"
+
+docker --tls --tlsverify --tlskey "$TLS_KEY_FILE" --tlscert "$TLS_CERT_FILE" --tlscacert "$TLS_CA_FILE"  -H localhost:8080 info
+```
+
+Which should just work as with the standard docker engine setup.
+
+Additionally, you should now see logs similar to this in the output of `docker service logs proxy_proxy`:
+
+```
+my_proxy_app.1.92wjwd0fz492@ubuntu    | ::ffff:10.0.0.2 - - [12/Nov/2023:18:41:00 +0000] "HEAD /_ping HTTP/1.1" 200 2 "-" "Docker-Client/24.0.5 (linux)" - Client-CN: Client
+my_proxy_app.1.92wjwd0fz492@ubuntu    | ::ffff:10.0.0.2 - - [12/Nov/2023:18:41:00 +0000] "GET /v1.43/info HTTP/1.1" 200 3858 "-" "Docker-Client/24.0.5 (linux)" - Client-CN: Client
 ```
 
 ## Environment Variables
