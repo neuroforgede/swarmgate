@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   app:
-    image: node:latest
+    image: ghcr.io/s4ke/docker-swarm-multitenant-proxy:0.2.0
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
@@ -10,19 +10,26 @@ services:
       - ALLOWED_REGULAR_VOLUMES_DRIVERS=local
       - ALLOWED_VOLUME_TYPES=bind,volume,tmpfs,npipe,cluster
       - ALLOW_PORT_EXPOSE=true
+      - TLS_KEY_FILE=/run/secrets/tls_key
+      - TLS_CERT_FILE=/run/secrets/tls_cert
+      - TLS_CA_FILE=/run/secrets/tls_ca
+      - TLS_DISABLE=false
+    secrets:
+      - tls_key
+      - tls_cert
+      - tls_ca
     ports:
-      - "8080:8080"
+      - "8081:8080"
     deploy:
       replicas: 1
-      update_config:
-        parallelism: 1
-        delay: 10s
-      restart_policy:
-        condition: on-failure
-    working_dir: /usr/src/app
-    command: npm start
-    networks:
-      - app-network
+
+secrets:
+  tls_key:
+    file: ./server-key.pem
+  tls_cert:
+    file: ./server-cert.pem
+  tls_ca:
+    file: ./ca-cert.pem
 
 networks:
   app-network:

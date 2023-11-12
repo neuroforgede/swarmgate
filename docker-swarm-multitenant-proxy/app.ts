@@ -1,7 +1,6 @@
 import express from 'express';
 import Docker from 'dockerode';
 import bodyParser from 'body-parser';
-import audit from 'express-requests-logger'
 import morgan from 'morgan';
 import * as http from 'http';
 

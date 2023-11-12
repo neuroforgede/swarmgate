@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/no-var-requires */
 // from https://github.com/BretFisher/node-docker-good-defaults
 
-const app = require("../src/app").app;
+const app = require("../app").app;
 
 // Constants
 const PORT = process.env.PORT || 8080;
