@@ -13,7 +13,9 @@ This projects uses Node.js and Express for the server, along with the dockerode 
 - Multi-tenant Access Control: Restricts access to Docker Swarm resources based on ownership labels.
 - Environment Variable Configuration: Uses environment variables to control various aspects like allowed volume drivers, volume types, and port exposure.
 - Comprehensive API: Provides endpoints for managing Docker services, tasks, networks, secrets, configs, and volumes with ownership checks.
-- Security Focused: Enforces checks on mount types, volume drivers, and ownership of resources like secrets and configs.
+- Baseline Security Checks: Enforces checks on mount types, volume drivers, and ownership of resources like secrets and configs.
+- Ability to turn off local volumes.
+- Ability to turn off port exposure.
 
 ## Prerequisites
 
@@ -36,6 +38,11 @@ DOCKER_API_VERSION=1.43 docker -H localhost:8080 info
 - ALLOWED_VOLUME_TYPES: Comma-separated list of allowed volume types.
 - ALLOW_PORT_EXPOSE: Set to 1 or true to allow port exposure.
 - OWNER_LABEL_VALUE: Required value for the ownership label.
+- ALLOW_LISTED_NETWORKS: Comma-separated list of networks not owned by the proxy that are allowed to be used.
+
+## How to achieve Multitenancy with this?
+
+The general idea here is to deploy one proxy per tenant. The proxy is then configured with a label that identifies the tenant. All resources deployed by the proxy will be labeled with the tenant label. The proxy will then filter all requests based on the tenant label. This allows for a multi-tenant Docker Swarm environment.
 
 ## Contributions
 
