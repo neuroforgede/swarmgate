@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  app:
+    image: node:latest
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - OWNER_LABEL_VALUE=your-owner-label-value
+      - ALLOWED_REGULAR_VOLUMES_DRIVERS=local
+      - ALLOWED_VOLUME_TYPES=bind,volume,tmpfs,npipe,cluster
+      - ALLOW_PORT_EXPOSE=true
+    ports:
+      - "8080:8080"
+    deploy:
+      replicas: 1
+      update_config:
+        parallelism: 1
+        delay: 10s
+      restart_policy:
+        condition: on-failure
+    working_dir: /usr/src/app
+    command: npm start
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: overlay
