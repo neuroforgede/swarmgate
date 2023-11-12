@@ -76,8 +76,11 @@ app.get('/:version/version', async (req, res) => {
 
 app.get('/:version/nodes', async (req, res) => {
   try {
+    const filters = req.query.filters as any;
     // Fetching all nodes
-    const nodes = await docker.listNodes();
+    const nodes = await docker.listNodes({
+      filters: filters,
+    });
 
     // Since we don't modify nodes and there's no concept of ownership,
     // we directly return all nodes. Modify this as per your requirement.
@@ -126,19 +129,21 @@ function doesVolumeExist(volumeName: string): Promise<boolean> {
   });
 }
 
+type TaskTemplate = {
+  ContainerSpec?: {
+    Secrets?: { SecretName: string }[],
+    Configs?: { ConfigName: string }[],
+    Mounts?: { Type: string, Source: string, VolumeOptions?: { Driver?: string, Labels?: { [key: string]: string } } }[],
+    Labels?: { [key: string]: string }
+  },
+  Runtime?: string,
+  Networks?: { Target: string }[],
+  EndpointSpec?: { Ports?: { TargetPort: number, Protocol: string }[] }
+}
 // returns true if we should continue
 async function isValidTaskTemplate(
   res: express.Response,
-  taskTemplate: {
-    ContainerSpec?: {
-      Secrets?: { SecretName: string }[],
-      Configs?: { ConfigName: string }[],
-      Mounts?: { Type: string, Source: string, VolumeOptions?: { Driver?: string, Labels?: { [key: string]: string } } }[]
-    },
-    Runtime?: string,
-    Networks?: { Target: string }[],
-    EndpointSpec?: { Ports?: { TargetPort: number, Protocol: string }[] }
-  }): Promise<boolean> {
+  taskTemplate:TaskTemplate): Promise<boolean> {
   const containerSpec = taskTemplate?.ContainerSpec;
   if (taskTemplate?.Runtime != 'plugin' && taskTemplate?.Runtime != 'attachment') {
     if (!containerSpec) {
@@ -192,7 +197,7 @@ async function isValidTaskTemplate(
           res.status(400).send(`Mount type ${mount.Type} is not allowed.`);
           return false;
         }
-        
+
         // we can't enforce volume existance before we actually run this
         // as this is not how docker swarm handles it
         // so we can only check ownership on non existant volumes
@@ -226,11 +231,15 @@ app.post('/:version/services/create', async (req, res) => {
   // Add ownership label to the service creation request
   const serviceSpec: Docker.CreateServiceOptions = req.body;
   try {
-    serviceSpec.Labels = { ...serviceSpec.Labels, [label]: labelValue };
-    const taskTemplate = serviceSpec.TaskTemplate;
+    const taskTemplate: TaskTemplate = serviceSpec.TaskTemplate as any;
 
-    if (!await isValidTaskTemplate(res, taskTemplate as any)) {
+    if (!await isValidTaskTemplate(res, taskTemplate)) {
       return;
+    }
+
+    serviceSpec.Labels = { ...serviceSpec.Labels, [label]: labelValue };
+    if(taskTemplate.ContainerSpec) {
+      taskTemplate.ContainerSpec.Labels = { ...taskTemplate.ContainerSpec.Labels || {}, [label]: labelValue };
     }
 
     // TODO: verify privileges, capability-add and capability-drop
@@ -255,21 +264,27 @@ app.post('/:version/services/:id/update', async (req, res) => {
 
   if (await isOwnedService(serviceId)) {
     try {
-      const taskTemplate = updateSpec.TaskTemplate;
+      const taskTemplate: TaskTemplate = updateSpec.TaskTemplate as any;
 
-      if (!await isValidTaskTemplate(res, taskTemplate as any)) {
-        return;
+      if(taskTemplate) {
+        // might be null in case of rollback
+        if (!await isValidTaskTemplate(res, taskTemplate)) {
+          return;
+        }
+
+        updateSpec.Labels = { ...updateSpec.Labels, [label]: labelValue };
+        if(taskTemplate.ContainerSpec) {
+          taskTemplate.ContainerSpec.Labels = { ...taskTemplate.ContainerSpec.Labels || {}, [label]: labelValue };
+        }
       }
 
       const service = docker.getService(serviceId);
 
-
-      const authHeader = req.headers['X-Registry-Auth'];
-      updateSpec.Labels = { ...updateSpec.Labels, [label]: labelValue };
       updateSpec.version = req.query.version;
       updateSpec.registryAuthFrom = req.query.registryAuthFrom;
       updateSpec.rollback = req.query.rollback;
 
+      const authHeader = req.headers['X-Registry-Auth'];
       if (authHeader) {
         const auth = JSON.parse(Buffer.from(authHeader as string, 'base64').toString('utf-8'));
         const response = await service.update(auth, updateSpec);
@@ -291,7 +306,7 @@ app.post('/:version/services/:id/update', async (req, res) => {
 
 app.get('/:version/services', async (req, res) => {
   try {
-    // TODO: push down filtering
+    // TODO: push down filtering of ownership
     const services = await docker.listServices({
       filters: req.query.filters as any,
       status: req.query.status as any,
@@ -443,7 +458,11 @@ app.post('/:version/networks/create', async (req, res) => {
 // Endpoint to list all owned networks
 app.get('/:version/networks', async (req, res) => {
   try {
-    const networks = await docker.listNetworks();
+    // TODO: push down ownership filtering
+    const filters = req.query.filters as any;
+    const networks = await docker.listNetworks({
+      filters: filters,
+    });
     const ownedNetworks = networks.filter((net) => isNetworkOwned(net));
     res.json(ownedNetworks);
   } catch (error: any) {
@@ -517,7 +536,11 @@ app.post('/:version/secrets/create', async (req, res) => {
 // Endpoint to list all owned secrets
 app.get('/:version/secrets', async (req, res) => {
   try {
-    const secrets = await docker.listSecrets();
+    // TODO: push down ownership filtering
+    const filters = req.query.filters as any;
+    const secrets = await docker.listSecrets({
+      filters: filters,
+    });
     const ownedSecrets = secrets.filter((sec) => isSecretOwned(sec));
     res.json(ownedSecrets);
   } catch (error: any) {
@@ -612,7 +635,11 @@ app.post('/:version/configs/create', async (req, res) => {
 // Endpoint to list all owned configs
 app.get('/:version/configs', async (req, res) => {
   try {
-    const configs = await docker.listConfigs();
+    // TODO: push down ownership filtering
+    const filters = req.query.filters as any;
+    const configs = await docker.listConfigs({
+      filters: filters,
+    });
     const ownedConfigs = configs.filter((conf) => isConfigOwned(conf));
     res.json(ownedConfigs);
   } catch (error: any) {
@@ -761,6 +788,7 @@ app.post('/:version/volumes/create', async (req, res) => {
 // Endpoint to list all owned volumes
 app.get('/:version/volumes', async (req, res) => {
   try {
+    // TODO: push down ownership filtering
     const volumes = await docker.listVolumes({
       filters: req.query.filters as any,
     });
