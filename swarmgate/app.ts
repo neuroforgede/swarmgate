@@ -124,19 +124,12 @@ app.get('/_ping', async (req, res) => {
   }
 });
 
-app.get('/version', async (req, res) => {
-  try {
-    const versionInfo = await docker.version();
-    res.json(versionInfo);
-  } catch (error: any) {
-    res.status(500).json({ message: error.message });
-  }
-});
-
-app.get('/:version/version', async (req, res) => {
+app.get('/:version?/version', async (req, res) => {
   try {
     const version = req.params.version;
-    console.log(`Received version request for API version: ${version}`);
+    if(version) {
+      console.log(`Received version request for API version: ${version}`);
+    }
     const versionInfo = await docker.version();
     res.json(versionInfo);
   } catch (error: any) {
@@ -144,7 +137,7 @@ app.get('/:version/version', async (req, res) => {
   }
 });
 
-app.get('/:version/nodes', async (req, res) => {
+app.get('/:version?/nodes', async (req, res) => {
   try {
     const filters = req.query.filters as any;
     // Fetching all nodes
@@ -161,16 +154,7 @@ app.get('/:version/nodes', async (req, res) => {
 });
 
 // Endpoint to get Docker info
-app.get('/:version/info', async (req, res) => {
-  try {
-    const info = await docker.info();
-    res.json(info);
-  } catch (error: any) {
-    res.status(500).json({ message: error.message });
-  }
-});
-
-app.get('/info', async (req, res) => {
+app.get('/:version?/info', async (req, res) => {
   try {
     const info = await docker.info();
     res.json(info);
@@ -311,7 +295,7 @@ async function isValidTaskTemplate(
 }
 
 // Define the routes you want to expose
-app.post('/:version/services/create', async (req, res) => {
+app.post('/:version?/services/create', async (req, res) => {
   // Add ownership label to the service creation request
   const serviceSpec: Docker.CreateServiceOptions = req.body;
   try {
@@ -342,7 +326,7 @@ app.post('/:version/services/create', async (req, res) => {
   }
 });
 
-app.post('/:version/services/:id/update', async (req, res) => {
+app.post('/:version?/services/:id/update', async (req, res) => {
   const serviceId = req.params.id;
   const updateSpec = req.body;
 
@@ -388,7 +372,7 @@ app.post('/:version/services/:id/update', async (req, res) => {
   }
 });
 
-app.get('/:version/services', async (req, res) => {
+app.get('/:version?/services', async (req, res) => {
   try {
     // TODO: push down filtering of ownership
     const services = await docker.listServices({
@@ -402,7 +386,7 @@ app.get('/:version/services', async (req, res) => {
   }
 });
 
-app.get('/:version/services/:id', async (req, res) => {
+app.get('/:version?/services/:id', async (req, res) => {
   const serviceId = req.params.id;
 
   if (await isOwnedService(serviceId)) {
@@ -419,7 +403,7 @@ app.get('/:version/services/:id', async (req, res) => {
   }
 });
 
-app.delete('/:version/services/:id', async (req, res) => {
+app.delete('/:version?/services/:id', async (req, res) => {
   const serviceId = req.params.id;
 
   if (!(await isOwnedService(serviceId))) {
@@ -435,7 +419,7 @@ app.delete('/:version/services/:id', async (req, res) => {
   }
 });
 
-app.get('/:version/services/:id/logs', async (req, res) => {
+app.get('/:version?/services/:id/logs', async (req, res) => {
   const serviceId = req.params.id;
 
   if (!(await isOwnedService(serviceId))) {
@@ -467,7 +451,7 @@ app.get('/:version/services/:id/logs', async (req, res) => {
 });
 
 // Endpoint to list tasks, showing only those related to owned services
-app.get('/:version/tasks', async (req, res) => {
+app.get('/:version?/tasks', async (req, res) => {
   try {
     const filters = req.query.filters as any;
     const tasks = await docker.listTasks({
@@ -498,7 +482,7 @@ async function isTaskOfOwnedService(taskId: string): Promise<boolean> {
 }
 
 // Endpoint to inspect a task, ensuring it belongs to an owned service
-app.get('/:version/tasks/:id', async (req, res) => {
+app.get('/:version?/tasks/:id', async (req, res) => {
   const taskId = req.params.id;
 
   if (await isTaskOfOwnedService(taskId)) {
@@ -530,7 +514,7 @@ async function isOwnedNetwork(networkId: string): Promise<boolean> {
 }
 
 // Endpoint to create a network with ownership label
-app.post('/:version/networks/create', async (req, res) => {
+app.post('/:version?/networks/create', async (req, res) => {
   const networkSpec = req.body;
   networkSpec.Labels = { ...networkSpec.Labels, [label]: labelValue };
 
@@ -543,7 +527,7 @@ app.post('/:version/networks/create', async (req, res) => {
 });
 
 // Endpoint to list all owned networks
-app.get('/:version/networks', async (req, res) => {
+app.get('/:version?/networks', async (req, res) => {
   try {
     // TODO: push down ownership filtering
     const filters = req.query.filters as any;
@@ -558,7 +542,7 @@ app.get('/:version/networks', async (req, res) => {
 });
 
 // Endpoint to delete a network, respecting ownership
-app.delete('/:version/networks/:id', async (req, res) => {
+app.delete('/:version?/networks/:id', async (req, res) => {
   const networkId = req.params.id;
 
   if (await isOwnedNetwork(networkId)) {
@@ -575,7 +559,7 @@ app.delete('/:version/networks/:id', async (req, res) => {
 });
 
 // Endpoint to inspect a network, respecting ownership
-app.get('/:version/networks/:id', async (req, res) => {
+app.get('/:version?/networks/:id', async (req, res) => {
   const networkId = req.params.id;
 
   if (await isOwnedNetwork(networkId)) {
@@ -613,7 +597,7 @@ async function isOwnedSecret(secretId: string): Promise<boolean> {
 }
 
 // Endpoint to create a secret with ownership label
-app.post('/:version/secrets/create', async (req, res) => {
+app.post('/:version?/secrets/create', async (req, res) => {
   const secretSpec = req.body;
   secretSpec.Labels = { ...secretSpec.Labels, [label]: labelValue };
 
@@ -626,7 +610,7 @@ app.post('/:version/secrets/create', async (req, res) => {
 });
 
 // Endpoint to list all owned secrets
-app.get('/:version/secrets', async (req, res) => {
+app.get('/:version?/secrets', async (req, res) => {
   try {
     // TODO: push down ownership filtering
     const filters = req.query.filters as any;
@@ -641,7 +625,7 @@ app.get('/:version/secrets', async (req, res) => {
 });
 
 // Endpoint to delete a secret, respecting ownership
-app.delete('/:version/secrets/:id', async (req, res) => {
+app.delete('/:version?/secrets/:id', async (req, res) => {
   const secretId = req.params.id;
 
   if (await isOwnedSecret(secretId)) {
@@ -658,7 +642,7 @@ app.delete('/:version/secrets/:id', async (req, res) => {
 });
 
 // Endpoint to inspect a secret, respecting ownership
-app.get('/:version/secrets/:id', async (req, res) => {
+app.get('/:version?/secrets/:id', async (req, res) => {
   const secretId = req.params.id;
 
   if (await isOwnedSecret(secretId)) {
@@ -676,7 +660,7 @@ app.get('/:version/secrets/:id', async (req, res) => {
 });
 
 // Endpoint to update a secret, respecting ownership
-app.post('/:version/secrets/:id/update', async (req, res) => {
+app.post('/:version?/secrets/:id/update', async (req, res) => {
   const secretId = req.params.id;
   if (await isOwnedSecret(secretId)) {
     const secretSpec = req.body;
@@ -712,7 +696,7 @@ async function isOwnedConfig(configId: string): Promise<boolean> {
 }
 
 // Endpoint to create a config with ownership label
-app.post('/:version/configs/create', async (req, res) => {
+app.post('/:version?/configs/create', async (req, res) => {
   const configSpec = req.body;
   configSpec.Labels = { ...configSpec.Labels, [label]: labelValue };
 
@@ -725,7 +709,7 @@ app.post('/:version/configs/create', async (req, res) => {
 });
 
 // Endpoint to list all owned configs
-app.get('/:version/configs', async (req, res) => {
+app.get('/:version?/configs', async (req, res) => {
   try {
     // TODO: push down ownership filtering
     const filters = req.query.filters as any;
@@ -740,7 +724,7 @@ app.get('/:version/configs', async (req, res) => {
 });
 
 // Endpoint to delete a config, respecting ownership
-app.delete('/:version/configs/:id', async (req, res) => {
+app.delete('/:version?/configs/:id', async (req, res) => {
   const configId = req.params.id;
 
   if (await isOwnedConfig(configId)) {
@@ -757,7 +741,7 @@ app.delete('/:version/configs/:id', async (req, res) => {
 });
 
 // Endpoint to inspect a config, respecting ownership
-app.get('/:version/configs/:id', async (req, res) => {
+app.get('/:version?/configs/:id', async (req, res) => {
   const configId = req.params.id;
 
   if (await isOwnedConfig(configId)) {
@@ -775,7 +759,7 @@ app.get('/:version/configs/:id', async (req, res) => {
 });
 
 // Endpoint to update a config, respecting ownership
-app.post('/:version/configs/:id/update', async (req, res) => {
+app.post('/:version?/configs/:id/update', async (req, res) => {
   const configId = req.params.id;
 
   if (await isOwnedConfig(configId)) {
@@ -811,7 +795,7 @@ async function isOwnedVolume(volumeName: string): Promise<boolean> {
 }
 
 // Endpoint to create a volume with ownership label
-app.post('/:version/volumes/create', async (req, res) => {
+app.post('/:version?/volumes/create', async (req, res) => {
   const volumeSpec: Docker.VolumeCreateOptions = req.body;
   volumeSpec.Labels = { ...volumeSpec.Labels, [label]: labelValue };
 
@@ -846,7 +830,7 @@ app.post('/:version/volumes/create', async (req, res) => {
 });
 
 // Endpoint to list all owned volumes
-app.get('/:version/volumes', async (req, res) => {
+app.get('/:version?/volumes', async (req, res) => {
   try {
     // TODO: push down ownership filtering
     const volumes = await docker.listVolumes({
@@ -863,7 +847,7 @@ app.get('/:version/volumes', async (req, res) => {
 });
 
 // Endpoint to delete a volume, respecting ownership
-app.delete('/:version/volumes/:name', async (req, res) => {
+app.delete('/:version?/volumes/:name', async (req, res) => {
   const volumeName = req.params.name;
 
   if (await isOwnedVolume(volumeName)) {
@@ -882,7 +866,7 @@ app.delete('/:version/volumes/:name', async (req, res) => {
 });
 
 // Endpoint to inspect a volume, respecting ownership
-app.get('/:version/volumes/:name', async (req, res) => {
+app.get('/:version?/volumes/:name', async (req, res) => {
   const volumeName = req.params.name;
 
   if (await isOwnedVolume(volumeName)) {
@@ -898,7 +882,7 @@ app.get('/:version/volumes/:name', async (req, res) => {
 });
 
 // Endpoint to update a volume, respecting ownership (only supported for cluster volumes)
-app.put('/:version/volumes/:name', async (req, res) => {
+app.put('/:version?/volumes/:name', async (req, res) => {
   const volumeName = req.params.name;
   const version = req.params.version;
   if (await isOwnedVolume(volumeName)) {
@@ -933,7 +917,7 @@ app.put('/:version/volumes/:name', async (req, res) => {
 });
 
 
-app.get('/:version/distribution/:rest(*)', async (req, res) => {
+app.get('/:version?/distribution/:rest(*)', async (req, res) => {
   const rest = req.params.rest;
   try {
     var optsf = {
