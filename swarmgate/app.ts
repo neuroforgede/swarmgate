@@ -127,7 +127,6 @@ app.get('/_ping', async (req, res) => {
 app.get('/version', async (req, res) => {
   try {
     const versionInfo = await docker.version();
-    console.log(versionInfo);
     res.json(versionInfo);
   } catch (error: any) {
     res.status(500).json({ message: error.message });
@@ -170,6 +169,16 @@ app.get('/:version/info', async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 });
+
+app.get('/info', async (req, res) => {
+  try {
+    const info = await docker.info();
+    res.json(info);
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
 
 // Services
 function isServiceOwned(service: Docker.Service): boolean {
@@ -807,7 +816,6 @@ app.post('/:version/volumes/create', async (req, res) => {
   volumeSpec.Labels = { ...volumeSpec.Labels, [label]: labelValue };
 
   try {
-    console.log(volumeSpec);
     if (!volumeSpec.Driver) {
       res.status(400).send(`Volume driver is required.`);
       return;
