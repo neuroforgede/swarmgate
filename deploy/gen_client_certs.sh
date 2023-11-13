@@ -6,7 +6,7 @@ CA_CERT="ca-cert.pem"
 
 
 CLIENTS=(
-    martinb
+    someuser
 )
 
 for CLIENT in "${CLIENTS[@]}"; do
