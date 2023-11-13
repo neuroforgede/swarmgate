@@ -15,7 +15,7 @@ const ALLOWED_VOLUME_TYPES = process.env.ALLOWED_VOLUME_TYPES?.split(',') || ['b
 const ALLOW_PORT_EXPOSE = process.env.ALLOW_PORT_EXPOSE === '1' || process.env.ALLOW_PORT_EXPOSE === 'true';
 const SERVICE_ALLOW_LISTED_NETWORKS = process.env.SERVICE_ALLOW_LISTED_NETWORKS?.split(',') || [];
 
-const label = "com.github.com/nfcompose/swarmgate";
+const label = "com.github.com.nfcompose.swarmgate";
 const labelValue = process.env.OWNER_LABEL_VALUE;
 
 const TLS_DISABLED = process.env.TLS_DISABLED === '1' || process.env.TLS_DISABLED === 'true';
