@@ -11,19 +11,16 @@ if (!TLS_DISABLED) {
     process.exit(1);
   }
 
-  let options = {
-    timeout: 2000,
-    host: 'localhost',
-    port: process.env.PORT || 8080,
-    path: '/_ping',
-    key: fs.readFileSync(process.env.TLS_KEY_FILE),
-    cert: fs.readFileSync(process.env.TLS_CERT_FILE),
-    ca: fs.readFileSync(process.env.TLS_CA_FILE),
-    // ignore
-    checkServerIdentity: (host, cert) => true
-  };
-
-  var request = https.request(options, (res) => {
+  var request = https.request({
+      timeout: 2000,
+      host: 'localhost',
+      port: process.env.PORT || 8080,
+      path: '/_ping',
+      key: fs.readFileSync(process.env.TLS_KEY_FILE),
+      cert: fs.readFileSync(process.env.TLS_CERT_FILE),
+      ca: fs.readFileSync(process.env.TLS_CA_FILE),
+      checkServerIdentity: (hostname, cert) => undefined
+  }, (res) => {
     console.info('STATUS: ' + res.statusCode);
     process.exitCode = (res.statusCode === 200) ? 0 : 1;
     process.exit();
@@ -36,14 +33,13 @@ if (!TLS_DISABLED) {
 
   request.end();
 } else {
-  let options = {
+
+  var request = http.request({
     timeout: 2000,
     host: 'localhost',
     port: process.env.PORT || 8080,
     path: '/_healthz'
-  };
-
-  var request = http.request(options, (res) => {
+  }, (res) => {
     console.info('STATUS: ' + res.statusCode);
     process.exitCode = (res.statusCode === 200) ? 0 : 1;
     process.exit();
