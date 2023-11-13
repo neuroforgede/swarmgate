@@ -19,6 +19,8 @@ if (!TLS_DISABLED) {
     key: fs.readFileSync(process.env.TLS_KEY_FILE),
     cert: fs.readFileSync(process.env.TLS_CERT_FILE),
     ca: fs.readFileSync(process.env.TLS_CA_FILE),
+    // ignore
+    checkServerIdentity: (host, cert) => true
   };
 
   var request = https.request(options, (res) => {
