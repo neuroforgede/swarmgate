@@ -13,7 +13,7 @@ const ALLOWED_REGULAR_VOLUME_DRIVERS = process.env.ALLOWED_REGULAR_VOLUMES_DRIVE
 const KNOWN_VOLUME_TYPES = ['bind', 'volume', 'tmpfs', 'npipe', 'cluster'];
 const ALLOWED_VOLUME_TYPES = process.env.ALLOWED_VOLUME_TYPES?.split(',') || ['bind', 'volume', 'tmpfs', 'npipe', 'cluster'];
 const ALLOW_PORT_EXPOSE = process.env.ALLOW_PORT_EXPOSE === '1' || process.env.ALLOW_PORT_EXPOSE === 'true';
-const SERVICE_ALLOW_LISTED_NETWORKS = process.env.ALLOW_LISTED_NETWORKS?.split(',') || [];
+const SERVICE_ALLOW_LISTED_NETWORKS = process.env.SERVICE_ALLOW_LISTED_NETWORKS?.split(',') || [];
 
 const label = "com.github.com/nfcompose/swarmgate";
 const labelValue = process.env.OWNER_LABEL_VALUE;
