@@ -199,11 +199,11 @@ function doesVolumeExist(volumeName: string): Promise<boolean> {
   });
 }
 
-async function isValidEndpoint(
+async function isValidEndpointSpec(
   res: express.Response,
-  endpoint: Docker.Endpoint): Promise<boolean> {
-  if (endpoint.Spec?.Ports) {
-    for (const port of endpoint.Spec?.Ports) {
+  endpointSpec: Docker.EndpointSpec): Promise<boolean> {
+  if (endpointSpec.Ports) {
+    for (const port of endpointSpec.Ports) {
       if (!ALLOW_PORT_EXPOSE) {
         res.status(403).send(`Access denied: Exposing ports is not allowed.`);
         return false;
@@ -315,7 +315,7 @@ app.post('/:version?/services/create', async (req, res) => {
       return;
     }
 
-    if(serviceSpec.EndpointSpec && !await isValidEndpoint(res, serviceSpec.EndpointSpec)) {
+    if(serviceSpec.EndpointSpec && !await isValidEndpointSpec(res, serviceSpec.EndpointSpec)) {
       return;
     }
 
@@ -362,7 +362,7 @@ app.post('/:version?/services/:id/update', async (req, res) => {
         }
       }
 
-      if(updateSpec.EndpointSpec && !await isValidEndpoint(res, updateSpec.EndpointSpec)) {
+      if(updateSpec.EndpointSpec && !await isValidEndpointSpec(res, updateSpec.EndpointSpec)) {
         return;
       }
 
