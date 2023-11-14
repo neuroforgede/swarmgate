@@ -439,7 +439,7 @@ app.get('/:version?/services/:id/logs', async (req, res) => {
 
   try {
     const service = docker.getService(serviceId);
-    const logStream = await service.logs({
+    const logs = await service.logs({
       details: req.query.details === '1' || req.query.details === 'true',
       follow: req.query.follow === '1' || req.query.follow === 'true',
       stdout: req.query.stdout === '1' || req.query.stdout === 'true',
@@ -450,16 +450,19 @@ app.get('/:version?/services/:id/logs', async (req, res) => {
     });
 
     res.setHeader('Content-Type', 'text/plain');
-    logStream.pipe(res);
 
-    req.on('close', () => {
-      try {
-        (logStream as any).destroy();
-      } catch (error) {
-        console.error(error);
-      }
-    });
-
+    if(logs.pipe) {
+      logs.pipe(res);
+      req.on('close', () => {
+        try {
+          (logs as any).destroy();
+        } catch (error) {
+          console.error(error);
+        }
+      });
+    } else {
+      res.send(logs);
+    }
   } catch (error: any) {
     console.error(error);
     res.status(500).json({ message: error.message });
@@ -525,7 +528,7 @@ app.get('/:version?/tasks/:id/logs', async (req, res) => {
   try {
     const task = docker.getTask(taskId);
     // dockerode has this, but not in the typings
-    const logStream = await (task as any).logs({
+    const logs = await (task as any).logs({
       details: req.query.details === '1' || req.query.details === 'true',
       follow: req.query.follow === '1' || req.query.follow === 'true',
       stdout: req.query.stdout === '1' || req.query.stdout === 'true',
@@ -536,16 +539,19 @@ app.get('/:version?/tasks/:id/logs', async (req, res) => {
     });
 
     res.setHeader('Content-Type', 'text/plain');
-    logStream.pipe(res);
 
-    req.on('close', () => {
-      try {
-        (logStream as any).destroy();
-      } catch (error) {
-        console.error(error);
-      }
-    });
-
+    if(logs.pipe) {
+      logs.pipe(res);
+      req.on('close', () => {
+        try {
+          (logs as any).destroy();
+        } catch (error) {
+          console.error(error);
+        }
+      });
+    } else {
+      res.send(logs);
+    }
   } catch (error: any) {
     console.error(error);
     res.status(500).json({ message: error.message });
