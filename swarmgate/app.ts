@@ -442,7 +442,11 @@ app.get('/:version?/services/:id/logs', async (req, res) => {
     logStream.pipe(res);
 
     req.on('close', () => {
-      // logStream.destroy(); // Ensure to close the stream when the client disconnects
+      try{
+        (logStream as any).destroy();
+      } catch (error) {
+        console.error(error);
+      }
     });
 
   } catch (error: any) {
