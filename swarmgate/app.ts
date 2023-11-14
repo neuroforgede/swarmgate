@@ -199,6 +199,20 @@ function doesVolumeExist(volumeName: string): Promise<boolean> {
   });
 }
 
+async function isValidEndpoint(
+  res: express.Response,
+  endpoint: Docker.Endpoint): Promise<boolean> {
+  if (endpoint.Spec?.Ports) {
+    for (const port of endpoint.Spec?.Ports) {
+      if (!ALLOW_PORT_EXPOSE) {
+        res.status(403).send(`Access denied: Exposing ports is not allowed.`);
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
 type TaskTemplate = {
   ContainerSpec?: {
     Secrets?: { SecretName: string }[],
@@ -208,7 +222,6 @@ type TaskTemplate = {
   },
   Runtime?: string,
   Networks?: { Target: string }[],
-  EndpointSpec?: { Ports?: { TargetPort: number, Protocol: string }[] }
 }
 // returns true if we should continue
 async function isValidTaskTemplate(
@@ -230,15 +243,6 @@ async function isValidTaskTemplate(
       }
       if (!await isOwnedNetwork(network.Target)) {
         res.status(403).send(`Access denied: Network ${network.Target} is not owned.`);
-        return false;
-      }
-    }
-  }
-
-  if (taskTemplate.EndpointSpec?.Ports) {
-    for (const port of taskTemplate.EndpointSpec.Ports) {
-      if (!ALLOW_PORT_EXPOSE) {
-        res.status(403).send(`Access denied: Exposing ports is not allowed.`);
         return false;
       }
     }
@@ -311,6 +315,10 @@ app.post('/:version?/services/create', async (req, res) => {
       return;
     }
 
+    if(serviceSpec.EndpointSpec && !await isValidEndpoint(res, serviceSpec.EndpointSpec)) {
+      return;
+    }
+
     serviceSpec.Labels = { ...serviceSpec.Labels, [label]: labelValue };
     if (taskTemplate.ContainerSpec) {
       taskTemplate.ContainerSpec.Labels = { ...taskTemplate.ContainerSpec.Labels || {}, [label]: labelValue };
@@ -351,6 +359,10 @@ app.post('/:version?/services/:id/update', async (req, res) => {
         if (taskTemplate.ContainerSpec) {
           taskTemplate.ContainerSpec.Labels = { ...taskTemplate.ContainerSpec.Labels || {}, [label]: labelValue };
         }
+      }
+
+      if(updateSpec.EndpointSpec && !await isValidEndpoint(res, updateSpec.EndpointSpec)) {
+        return;
       }
 
       const service = docker.getService(serviceId);
