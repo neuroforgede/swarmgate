@@ -41,7 +41,7 @@ export const app = express();
 
 morgan.token('client-cn', (req: any) => {
   if (req.client.authorized && req.socket.getPeerCertificate().subject) {
-      return req.socket.getPeerCertificate().subject.CN;
+    return req.socket.getPeerCertificate().subject.CN;
   }
   return 'Unauthorized';
 });
@@ -58,7 +58,7 @@ const clientCertAuthMiddleware = (req: any, res: any, next: any) => {
     res.status(401).send('Access denied: Invalid client certificate');
   }
 };
-if(!TLS_DISABLED) {
+if (!TLS_DISABLED) {
   app.use(morgan(':remote-addr - :remote-user [:date[clf]] ":method :url HTTP/:http-version" :status :res[content-length] ":referrer" ":user-agent" - Client-CN: :client-cn'));
 } else {
   app.use(morgan(':remote-addr - :remote-user [:date[clf]] ":method :url HTTP/:http-version" :status :res[content-length] ":referrer" ":user-agent" - Client-CN: TLS Disabled'))
@@ -129,7 +129,7 @@ app.get('/_ping', async (req, res) => {
 app.get('/:version?/version', async (req, res) => {
   try {
     const version = req.params.version;
-    if(version) {
+    if (version) {
       console.log(`Received version request for API version: ${version}`);
     }
     const versionInfo = await docker.version();
@@ -372,7 +372,7 @@ app.post('/:version?/services/:id/update', async (req, res) => {
       res.json(response);
     } catch (error: any) {
       console.error(error);
-    res.status(500).json({ message: error.message });
+      res.status(500).json({ message: error.message });
     }
   } else {
     res.status(403).send('Access denied: Service is not owned.');
@@ -405,7 +405,7 @@ app.get('/:version?/services/:id', async (req, res) => {
       res.json(service);
     } catch (error: any) {
       console.error(error);
-    res.status(500).json({ message: error.message });
+      res.status(500).json({ message: error.message });
     }
   } else {
     res.status(403).send('Access denied: Service is not owned.');
@@ -452,7 +452,7 @@ app.get('/:version?/services/:id/logs', async (req, res) => {
     logStream.pipe(res);
 
     req.on('close', () => {
-      try{
+      try {
         (logStream as any).destroy();
       } catch (error) {
         console.error(error);
@@ -507,7 +507,7 @@ app.get('/:version?/tasks/:id', async (req, res) => {
       res.json(task);
     } catch (error: any) {
       console.error(error);
-    res.status(500).json({ message: error.message });
+      res.status(500).json({ message: error.message });
     }
   } else {
     res.status(403).send('Access denied: Task does not belong to an owned service.');
@@ -538,7 +538,7 @@ app.get('/:version?/tasks/:id/logs', async (req, res) => {
     logStream.pipe(res);
 
     req.on('close', () => {
-      try{
+      try {
         (logStream as any).destroy();
       } catch (error) {
         console.error(error);
@@ -608,7 +608,7 @@ app.delete('/:version?/networks/:id', async (req, res) => {
       res.status(200).send(`Network ${networkId} deleted successfully.`);
     } catch (error: any) {
       console.error(error);
-    res.status(500).json({ message: error.message });
+      res.status(500).json({ message: error.message });
     }
   } else {
     res.status(403).send('Access denied: Network is not owned.');
@@ -631,7 +631,7 @@ app.get('/:version?/networks/:id', async (req, res) => {
       res.json(networkInfo);
     } catch (error: any) {
       console.error(error);
-    res.status(500).json({ message: error.message });
+      res.status(500).json({ message: error.message });
     }
   } else {
     res.status(403).send('Access denied: Network is not owned.');
@@ -695,7 +695,7 @@ app.delete('/:version?/secrets/:id', async (req, res) => {
       res.status(200).send(`Secret ${secretId} deleted successfully.`);
     } catch (error: any) {
       console.error(error);
-    res.status(500).json({ message: error.message });
+      res.status(500).json({ message: error.message });
     }
   } else {
     res.status(403).send('Access denied: Secret is not owned.');
@@ -713,7 +713,7 @@ app.get('/:version?/secrets/:id', async (req, res) => {
       res.json(secretInfo);
     } catch (error: any) {
       console.error(error);
-    res.status(500).json({ message: error.message });
+      res.status(500).json({ message: error.message });
     }
   } else {
     // 404 or docker cli is not happy in docker stack creation
@@ -734,7 +734,7 @@ app.post('/:version?/secrets/:id/update', async (req, res) => {
       res.json(secretInfo);
     } catch (error: any) {
       console.error(error);
-    res.status(500).json({ message: error.message });
+      res.status(500).json({ message: error.message });
     }
   } else {
     res.status(403).send('Access denied: Secret is not owned.');
@@ -799,7 +799,7 @@ app.delete('/:version?/configs/:id', async (req, res) => {
       res.status(200).send(`Config ${configId} deleted successfully.`);
     } catch (error: any) {
       console.error(error);
-    res.status(500).json({ message: error.message });
+      res.status(500).json({ message: error.message });
     }
   } else {
     res.status(403).send('Access denied: Config is not owned.');
@@ -817,7 +817,7 @@ app.get('/:version?/configs/:id', async (req, res) => {
       res.json(configInfo);
     } catch (error: any) {
       console.error(error);
-    res.status(500).json({ message: error.message });
+      res.status(500).json({ message: error.message });
     }
   } else {
     // 404 or docker cli is not happy in docker stack creation
@@ -839,7 +839,7 @@ app.post('/:version?/configs/:id/update', async (req, res) => {
       res.json(configInfo);
     } catch (error: any) {
       console.error(error);
-    res.status(500).json({ message: error.message });
+      res.status(500).json({ message: error.message });
     }
   } else {
     res.status(403).send('Access denied: Config is not owned.');
@@ -929,7 +929,7 @@ app.delete('/:version?/volumes/:name', async (req, res) => {
       res.status(200).send(`Volume ${volumeName} deleted successfully.`);
     } catch (error: any) {
       console.error(error);
-    res.status(500).json({ message: error.message });
+      res.status(500).json({ message: error.message });
     }
   } else {
     res.status(403).send('Access denied: Volume is not owned.');
@@ -946,7 +946,7 @@ app.get('/:version?/volumes/:name', async (req, res) => {
       res.json(volume);
     } catch (error: any) {
       console.error(error);
-    res.status(500).json({ message: error.message });
+      res.status(500).json({ message: error.message });
     }
   } else {
     res.status(403).send('Access denied: Volume is not owned.');
@@ -982,7 +982,7 @@ app.put('/:version?/volumes/:name', async (req, res) => {
     } catch (error: any) {
       console.log(error);
       console.error(error);
-    res.status(500).json({ message: error.message });
+      res.status(500).json({ message: error.message });
     }
   } else {
     res.status(403).send('Access denied: Volume is not owned.');
