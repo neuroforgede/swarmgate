@@ -497,6 +497,38 @@ app.get('/:version?/tasks/:id', async (req, res) => {
   }
 });
 
+app.get('/:version?/tasks/:id/logs', async (req, res) => {
+  const taskId = req.params.id;
+
+  if (!(await isTaskOfOwnedService(taskId))) {
+    return res.status(403).json({ message: 'Access Denied: Service not owned' });
+  }
+
+  try {
+    const task = docker.getTask(taskId);
+    // dockerode has this, but not in the typings
+    const logStream = await (task as any).logs({
+      details: req.query.details === '1' || req.query.details === 'true',
+      follow: req.query.follow === '1' || req.query.follow === 'true',
+      stdout: req.query.stdout === '1' || req.query.stdout === 'true',
+      stderr: req.query.stderr === '1' || req.query.stderr === 'true',
+      since: req.query.since as any,
+      timestamps: req.query.timestamps === '1' || req.query.timestamps === 'true',
+      tail: req.query.tail as any,
+    });
+
+    res.setHeader('Content-Type', 'text/plain');
+    logStream.pipe(res);
+
+    req.on('close', () => {
+      // logStream.destroy(); // Ensure to close the stream when the client disconnects
+    });
+
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
 // Networks
 
 function isNetworkOwned(network: Docker.NetworkInspectInfo): boolean {
@@ -945,4 +977,14 @@ app.get('/:version?/distribution/:rest(*)', async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 
+});
+
+
+app.get('/:version?/swarm', async (req, res) => {
+  try {
+    const swarmInspect = await docker.swarmInspect();
+    res.json(swarmInspect);
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
 });
