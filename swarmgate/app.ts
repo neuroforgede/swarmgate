@@ -332,6 +332,7 @@ app.post('/:version?/services/create', async (req, res) => {
       const auth = JSON.parse(Buffer.from(authHeader as string, 'base64').toString('utf-8'));
       const service = await docker.createService(auth, serviceSpec);
       res.status(201).json(service);
+      return;
     }
     const service = await docker.createService(serviceSpec);
     res.status(201).json(service);
