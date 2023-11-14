@@ -38,6 +38,7 @@ function isVolumeDriverAllowed(volumeDriver: string): boolean {
 }
 
 export const app = express();
+app.disable('etag');
 
 morgan.token('client-cn', (req: any) => {
   if (req.client.authorized && req.socket.getPeerCertificate().subject) {
