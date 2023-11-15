@@ -50,7 +50,7 @@ version: '3.8'
 
 services:
   proxy:
-    image: ghcr.io/neuroforgede/swarmgate:0.4.0
+    image: ghcr.io/neuroforgede/swarmgate:0.4.10
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
