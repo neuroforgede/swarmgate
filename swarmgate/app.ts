@@ -41,8 +41,15 @@ export const app = express();
 app.disable('etag');
 
 morgan.token('client-cn', (req: any) => {
-  if (req.client.authorized && req.socket.getPeerCertificate().subject) {
-    return req.socket.getPeerCertificate().subject.CN;
+  if(!req.client || !req.client.authorized) {
+    return 'Unauthorized';
+  }
+  const cert = req.socket.getPeerCertificate();
+  if(!cert) {
+    return 'Unauthorized';
+  }
+  if (cert.subject) {
+    return cert.subject.CN;
   }
   return 'Unauthorized';
 });
