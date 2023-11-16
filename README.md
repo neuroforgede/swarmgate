@@ -13,6 +13,9 @@ This is done by filtering all requests on resource labels to check whether the r
 
 This projects uses Node.js and Express for the server, along with the dockerode (and docker-modem) library to interact with Docker.
 
+Note: This is ALPHA software. Please don't use this for separating swarms into tenants and then giving people you can't trust access. In it's current form it is mostly a guard against devs shooting the whole cluster in the foot by accident.
+We are working on the security side of things, though. See [this issue](https://github.com/neuroforgede/swarmgate/issues/1) for more information.
+
 ```mermaid
 sequenceDiagram
     participant User as Tenant User
