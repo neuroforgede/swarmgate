@@ -57,7 +57,7 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
-      - OWNER_LABEL_VALUE=your-owner-label-value
+      - TENANT_NAME=your-owner-label-value
       - ALLOWED_REGULAR_VOLUMES_DRIVERS=local
       - ALLOWED_VOLUME_TYPES=bind,volume,tmpfs,npipe,cluster
       - ALLOW_PORT_EXPOSE=true
@@ -117,7 +117,7 @@ my_proxy_app.1.92wjwd0fz492@ubuntu    | ::ffff:10.0.0.2 - - [12/Nov/2023:18:41:0
 - ALLOWED_REGULAR_VOLUMES_DRIVERS: Comma-separated list of allowed volume drivers.
 - ALLOWED_VOLUME_TYPES: Comma-separated list of allowed volume types.
 - ALLOW_PORT_EXPOSE: Set to 1 or true to allow port exposure.
-- OWNER_LABEL_VALUE: Required value for the ownership label.
+- TENANT_NAME: Required value for the ownership label.
 - SERVICE_ALLOW_LISTED_NETWORKS: Comma-separated list of networks not owned by the proxy that are allowed to be used.
 - TLS_KEY_FILE: Path to TLS key file.
 - TLS_CERT_FILE: Path to TLS cert file.

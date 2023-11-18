@@ -3,7 +3,6 @@ import Docker from 'dockerode';
 import bodyParser from 'body-parser';
 import morgan from 'morgan';
 import * as http from 'http';
-import { resolveTypeReferenceDirective } from 'typescript';
 
 const docker = new Docker({ socketPath: '/var/run/docker.sock' });
 
@@ -15,14 +14,24 @@ const ALLOWED_VOLUME_TYPES = process.env.ALLOWED_VOLUME_TYPES?.split(',') || ['b
 const ALLOW_PORT_EXPOSE = process.env.ALLOW_PORT_EXPOSE === '1' || process.env.ALLOW_PORT_EXPOSE === 'true';
 const SERVICE_ALLOW_LISTED_NETWORKS = process.env.SERVICE_ALLOW_LISTED_NETWORKS?.split(',') || [];
 
-const label = "com.github.com.nfcompose.swarmgate";
-const labelValue = process.env.OWNER_LABEL_VALUE;
+const tenantLabel = "com.github.com.nfcompose.swarmgate.tenant";
+// some older versions have OWNER_LABEL_VALUE set but not TENANT_NAME
+const tenantLabelValue = process.env.TENANT_NAME || process.env.OWNER_LABEL_VALUE;
 
 const TLS_DISABLED = process.env.TLS_DISABLED === '1' || process.env.TLS_DISABLED === 'true';
 
-if (!labelValue) {
-  console.error("OWNER_LABEL_VALUE environment variable is not set.");
+if (!tenantLabelValue) {
+  console.error("TENANT_NAME environment variable is not set.");
   process.exit(1);
+}
+
+const namePrefix = process.env.NAME_PREFIX || tenantLabelValue;
+
+function isResourceNameAllowed(name: string): boolean {
+  if (name.startsWith(namePrefix)) {
+    return true;
+  }
+  return false;
 }
 
 function isKnownMountType(volumeType: string): boolean {
@@ -182,7 +191,7 @@ function isServiceOwned(service: Docker.Service): boolean {
   if (!service.Spec?.Labels) {
     return false;
   }
-  return service.Spec?.Labels[label] == labelValue;
+  return service.Spec?.Labels[tenantLabel] == tenantLabelValue;
 }
 
 async function isOwnedService(serviceId: string): Promise<boolean> {
@@ -302,7 +311,7 @@ async function isValidTaskTemplate(
             }
           }
           const volumeOptions = mount.VolumeOptions || {};
-          mount.VolumeOptions.Labels = { ...volumeOptions.Labels || {}, [label]: labelValue };
+          mount.VolumeOptions.Labels = { ...volumeOptions.Labels || {}, [tenantLabel]: tenantLabelValue };
           mount.volumeOptions = volumeOptions;
         }
       }
@@ -318,6 +327,15 @@ app.post('/:version?/services/create', async (req, res) => {
   try {
     const taskTemplate: TaskTemplate = serviceSpec.TaskTemplate as any;
 
+    if(!serviceSpec.Name) {
+      res.status(400).send(`Service name is required.`);
+      return;
+    }
+    if(!isResourceNameAllowed(serviceSpec.Name)) {
+      res.status(400).send(`Service name ${serviceSpec.Name} is not allowed.`);
+      return;
+    }
+
     if (!await isValidTaskTemplate(res, taskTemplate)) {
       return;
     }
@@ -326,9 +344,9 @@ app.post('/:version?/services/create', async (req, res) => {
       return;
     }
 
-    serviceSpec.Labels = { ...serviceSpec.Labels, [label]: labelValue };
+    serviceSpec.Labels = { ...serviceSpec.Labels, [tenantLabel]: tenantLabelValue };
     if (taskTemplate.ContainerSpec) {
-      taskTemplate.ContainerSpec.Labels = { ...taskTemplate.ContainerSpec.Labels || {}, [label]: labelValue };
+      taskTemplate.ContainerSpec.Labels = { ...taskTemplate.ContainerSpec.Labels || {}, [tenantLabel]: tenantLabelValue };
     }
 
     // TODO: verify privileges, capability-add and capability-drop
@@ -363,9 +381,9 @@ app.post('/:version?/services/:id/update', async (req, res) => {
           return;
         }
 
-        updateSpec.Labels = { ...updateSpec.Labels, [label]: labelValue };
+        updateSpec.Labels = { ...updateSpec.Labels, [tenantLabel]: tenantLabelValue };
         if (taskTemplate.ContainerSpec) {
-          taskTemplate.ContainerSpec.Labels = { ...taskTemplate.ContainerSpec.Labels || {}, [label]: labelValue };
+          taskTemplate.ContainerSpec.Labels = { ...taskTemplate.ContainerSpec.Labels || {}, [tenantLabel]: tenantLabelValue };
         }
       }
 
@@ -581,7 +599,7 @@ app.get('/:version?/tasks/:id/logs', async (req, res) => {
 // Networks
 
 function isNetworkOwned(network: Docker.NetworkInspectInfo): boolean {
-  return !!(network.Labels && network.Labels[label] == labelValue);
+  return !!(network.Labels && network.Labels[tenantLabel] == tenantLabelValue);
 }
 
 async function isOwnedNetwork(networkId: string): Promise<boolean> {
@@ -597,9 +615,18 @@ async function isOwnedNetwork(networkId: string): Promise<boolean> {
 // Endpoint to create a network with ownership label
 app.post('/:version?/networks/create', async (req, res) => {
   const networkSpec = req.body;
-  networkSpec.Labels = { ...networkSpec.Labels, [label]: labelValue };
+  networkSpec.Labels = { ...networkSpec.Labels, [tenantLabel]: tenantLabelValue };
 
   try {
+    if(!networkSpec.Name) {
+      res.status(400).send(`Network name is required.`);
+      return;
+    }
+    if(!isResourceNameAllowed(networkSpec.Name)) {
+      res.status(400).send(`Network name ${networkSpec.Name} is not allowed.`);
+      return;
+    }
+
     const network = await docker.createNetwork(networkSpec);
     res.status(201).json(network);
   } catch (error: any) {
@@ -668,7 +695,7 @@ app.get('/:version?/networks/:id', async (req, res) => {
 // secrets
 
 function isSecretOwned(secret: Docker.Secret): boolean {
-  return !!(secret.Spec && secret.Spec.Labels && secret.Spec.Labels[label] === labelValue);
+  return !!(secret.Spec && secret.Spec.Labels && secret.Spec.Labels[tenantLabel] === tenantLabelValue);
 }
 
 async function isOwnedSecret(secretId: string): Promise<boolean> {
@@ -684,9 +711,18 @@ async function isOwnedSecret(secretId: string): Promise<boolean> {
 // Endpoint to create a secret with ownership label
 app.post('/:version?/secrets/create', async (req, res) => {
   const secretSpec = req.body;
-  secretSpec.Labels = { ...secretSpec.Labels, [label]: labelValue };
+  secretSpec.Labels = { ...secretSpec.Labels, [tenantLabel]: tenantLabelValue };
 
   try {
+    if(!secretSpec.Name) {
+      res.status(400).send(`Secret name is required.`);
+      return;
+    }
+    if(!isResourceNameAllowed(secretSpec.Name)) {
+      res.status(400).send(`Secret name ${secretSpec.Name} is not allowed.`);
+      return;
+    }
+
     const secret = await docker.createSecret(secretSpec);
     res.status(201).json(secret);
   } catch (error: any) {
@@ -753,7 +789,7 @@ app.post('/:version?/secrets/:id/update', async (req, res) => {
   const secretId = req.params.id;
   if (await isOwnedSecret(secretId)) {
     const secretSpec = req.body;
-    secretSpec.Labels = { ...secretSpec.Labels, [label]: labelValue };
+    secretSpec.Labels = { ...secretSpec.Labels, [tenantLabel]: tenantLabelValue };
     try {
       secretSpec.version = req.query.version;
       const secret = docker.getSecret(secretId);
@@ -772,7 +808,7 @@ app.post('/:version?/secrets/:id/update', async (req, res) => {
 // configs
 
 function isConfigOwned(config: Docker.ConfigInfo): boolean {
-  return !!(config.Spec && config.Spec.Labels && config.Spec.Labels[label] === labelValue);
+  return !!(config.Spec && config.Spec.Labels && config.Spec.Labels[tenantLabel] === tenantLabelValue);
 }
 
 async function isOwnedConfig(configId: string): Promise<boolean> {
@@ -788,9 +824,18 @@ async function isOwnedConfig(configId: string): Promise<boolean> {
 // Endpoint to create a config with ownership label
 app.post('/:version?/configs/create', async (req, res) => {
   const configSpec = req.body;
-  configSpec.Labels = { ...configSpec.Labels, [label]: labelValue };
+  configSpec.Labels = { ...configSpec.Labels, [tenantLabel]: tenantLabelValue };
 
   try {
+    if(!configSpec.Name) {
+      res.status(400).send(`Config name is required.`);
+      return;
+    }
+    if(!isResourceNameAllowed(configSpec.Name)) {
+      res.status(400).send(`Config name ${configSpec.Name} is not allowed.`);
+      return;
+    }
+
     const config = await docker.createConfig(configSpec);
     res.status(201).json(config);
   } catch (error: any) {
@@ -858,7 +903,7 @@ app.post('/:version?/configs/:id/update', async (req, res) => {
 
   if (await isOwnedConfig(configId)) {
     const configSpec = req.body;
-    configSpec.Labels = { ...configSpec.Labels, [label]: labelValue };
+    configSpec.Labels = { ...configSpec.Labels, [tenantLabel]: tenantLabelValue };
     try {
       configSpec.version = req.query.version;
       const config = docker.getConfig(configId);
@@ -876,7 +921,7 @@ app.post('/:version?/configs/:id/update', async (req, res) => {
 // volume code
 
 function isVolumeOwned(volume: Docker.VolumeInspectInfo): boolean {
-  return !!(volume.Labels && volume.Labels[label] == labelValue);
+  return !!(volume.Labels && volume.Labels[tenantLabel] == tenantLabelValue);
 }
 
 async function isOwnedVolume(volumeName: string): Promise<boolean> {
@@ -892,9 +937,18 @@ async function isOwnedVolume(volumeName: string): Promise<boolean> {
 // Endpoint to create a volume with ownership label
 app.post('/:version?/volumes/create', async (req, res) => {
   const volumeSpec: Docker.VolumeCreateOptions = req.body;
-  volumeSpec.Labels = { ...volumeSpec.Labels, [label]: labelValue };
+  volumeSpec.Labels = { ...volumeSpec.Labels, [tenantLabel]: tenantLabelValue };
 
   try {
+    if(!volumeSpec.Name) {
+      res.status(400).send(`Volume name is required.`);
+      return;
+    }
+    if(!isResourceNameAllowed(volumeSpec.Name)) {
+      res.status(400).send(`Volume name ${volumeSpec.Name} is not allowed.`);
+      return;
+    }
+
     if (!volumeSpec.Driver) {
       res.status(400).send(`Volume driver is required.`);
       return;

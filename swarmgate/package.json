@@ -5,8 +5,8 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "run-dev": "OWNER_LABEL_VALUE=${OWNER_LABEL_VALUE:-some-owner} ts-node bin/www",
-    "run-dev-without-tls": "TLS_DISABLED=1 OWNER_LABEL_VALUE=${OWNER_LABEL_VALUE:-some-owner} ts-node bin/www"
+    "run-dev": "TENANT_NAME=${TENANT_NAME:-some-owner} ts-node bin/www",
+    "run-dev-without-tls": "TLS_DISABLED=1 TENANT_NAME=${TENANT_NAME:-some-owner} ts-node bin/www"
   },
   "keywords": [],
   "author": "",
