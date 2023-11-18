@@ -1017,11 +1017,11 @@ app.put('/:version?/volumes/:name', async (req, res) => {
 });
 
 
-app.get('/:version?/distribution/:rest(*)', async (req, res) => {
+app.get('/:version?/distribution/:rest(*)/json', async (req, res) => {
   const rest = req.params.rest;
   try {
     var optsf = {
-      path: '/distribution/' + rest,
+      path: '/distribution/' + rest + '/json',
       method: 'GET',
       statusCodes: {
         200: true,
