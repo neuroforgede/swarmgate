@@ -1,5 +1,5 @@
 import express from 'express';
-import Docker from 'dockerode';
+import Docker, { VolumeCreateResponse } from 'dockerode';
 import bodyParser from 'body-parser';
 import morgan from 'morgan';
 import * as http from 'http';
@@ -25,10 +25,20 @@ if (!tenantLabelValue) {
   process.exit(1);
 }
 
-const namePrefix = process.env.NAME_PREFIX || tenantLabelValue;
+const NAME_PREFIX = process.env.NAME_PREFIX || tenantLabelValue;
+
+// Virtual Swarm Mode = simulating a swarm per tenant
+// We prefix all resources with the tenant name internally
+// but we don't expose the tenant name to the user
+const VIRTUAL_SWARM_MODE = process.env.VIRTUAL_SWARM_MODE === '1' || process.env.VIRTUAL_SWARM_MODE === 'true';
 
 function isResourceNameAllowed(name: string): boolean {
-  if (name.startsWith(namePrefix)) {
+  if (VIRTUAL_SWARM_MODE) {
+    // in virtual swarm mode, we don't expose the tenant name to the user
+    // so we don't need to check for it
+    return true;
+  }
+  if (name.startsWith(NAME_PREFIX)) {
     return true;
   }
   return false;
@@ -50,11 +60,11 @@ export const app = express();
 app.disable('etag');
 
 morgan.token('client-cn', (req: any) => {
-  if(!req.client || !req.client.authorized) {
+  if (!req.client || !req.client.authorized) {
     return 'Unauthorized';
   }
   const cert = req.socket.getPeerCertificate();
-  if(!cert) {
+  if (!cert) {
     return 'Unauthorized';
   }
   if (cert.subject) {
@@ -187,7 +197,55 @@ app.get('/:version?/info', async (req, res) => {
 
 
 // Services
+
+function augmentServiceSpecWithTenantName(serviceSpec: Docker.CreateServiceOptions): Docker.CreateServiceOptions {
+  if (!VIRTUAL_SWARM_MODE) {
+    return serviceSpec;
+  }
+
+  // deep copy serviceSpec
+  serviceSpec = JSON.parse(JSON.stringify(serviceSpec));
+
+  // prefix service name with tenant name
+  serviceSpec.Name = `${NAME_PREFIX}-${serviceSpec.Name}`;
+
+  const taskTemplate = serviceSpec.TaskTemplate as TaskTemplate;
+  // prefix network names with tenant name
+  if (taskTemplate?.Networks) {
+    for (const network of taskTemplate.Networks) {
+      network.Target = `${NAME_PREFIX}-${network.Target}`;
+    }
+  }
+  // prefix secret names with tenant name
+  if (taskTemplate?.ContainerSpec?.Secrets) {
+    for (const secret of taskTemplate.ContainerSpec.Secrets) {
+      secret.SecretName = `${NAME_PREFIX}-${secret.SecretName}`;
+    }
+  }
+  // prefix config names with tenant name
+  if (taskTemplate?.ContainerSpec?.Configs) {
+    for (const config of taskTemplate.ContainerSpec.Configs) {
+      config.ConfigName = `${NAME_PREFIX}-${config.ConfigName}`;
+    }
+  }
+  // prefix volume names with tenant name
+  if (taskTemplate?.ContainerSpec?.Mounts) {
+    for (const mount of taskTemplate.ContainerSpec.Mounts) {
+      if (mount.Type == 'volume' || mount.Type == 'cluster') {
+        mount.Source = `${NAME_PREFIX}-${mount.Source}`;
+      }
+    }
+  }
+  return serviceSpec;
+}
+
 function isServiceOwned(service: Docker.Service): boolean {
+  if (!service.Spec?.Name) {
+    return false;
+  }
+  if (!isResourceNameAllowed(service.Spec?.Name)) {
+    return false;
+  }
   if (!service.Spec?.Labels) {
     return false;
   }
@@ -201,18 +259,6 @@ async function isOwnedService(serviceId: string): Promise<boolean> {
   } catch (error) {
     return false;
   }
-}
-
-function doesVolumeExist(volumeName: string): Promise<boolean> {
-  return new Promise((resolve, reject) => {
-    docker.getVolume(volumeName).inspect((err, data) => {
-      if (err) {
-        resolve(false);
-      } else {
-        resolve(true);
-      }
-    });
-  });
 }
 
 async function isValidEndpointSpec(
@@ -320,18 +366,17 @@ async function isValidTaskTemplate(
   return true;
 }
 
-// Define the routes you want to expose
 app.post('/:version?/services/create', async (req, res) => {
   // Add ownership label to the service creation request
-  const serviceSpec: Docker.CreateServiceOptions = req.body;
+  const serviceSpec: Docker.CreateServiceOptions = augmentServiceSpecWithTenantName(req.body);
   try {
     const taskTemplate: TaskTemplate = serviceSpec.TaskTemplate as any;
 
-    if(!serviceSpec.Name) {
+    if (!serviceSpec.Name) {
       res.status(400).send(`Service name is required.`);
       return;
     }
-    if(!isResourceNameAllowed(serviceSpec.Name)) {
+    if (!isResourceNameAllowed(serviceSpec.Name)) {
       res.status(400).send(`Service name ${serviceSpec.Name} is not allowed.`);
       return;
     }
@@ -340,7 +385,7 @@ app.post('/:version?/services/create', async (req, res) => {
       return;
     }
 
-    if(serviceSpec.EndpointSpec && !await isValidEndpointSpec(res, serviceSpec.EndpointSpec)) {
+    if (serviceSpec.EndpointSpec && !await isValidEndpointSpec(res, serviceSpec.EndpointSpec)) {
       return;
     }
 
@@ -369,11 +414,11 @@ app.post('/:version?/services/create', async (req, res) => {
 
 app.post('/:version?/services/:id/update', async (req, res) => {
   const serviceId = req.params.id;
-  const updateSpec = req.body;
+  const updateSpec: any = augmentServiceSpecWithTenantName(req.body);
 
   if (await isOwnedService(serviceId)) {
     try {
-      const taskTemplate: TaskTemplate = updateSpec.TaskTemplate as any;
+      const taskTemplate: TaskTemplate = updateSpec.TaskTemplate as TaskTemplate;
 
       if (taskTemplate) {
         // might be null in case of rollback
@@ -387,7 +432,7 @@ app.post('/:version?/services/:id/update', async (req, res) => {
         }
       }
 
-      if(updateSpec.EndpointSpec && !await isValidEndpointSpec(res, updateSpec.EndpointSpec)) {
+      if (updateSpec.EndpointSpec && !await isValidEndpointSpec(res, updateSpec.EndpointSpec)) {
         return;
       }
 
@@ -489,7 +534,7 @@ app.get('/:version?/services/:id/logs', async (req, res) => {
 
     res.setHeader('Content-Type', 'text/plain');
 
-    if(logs.pipe) {
+    if (logs.pipe) {
       logs.pipe(res);
       req.on('close', () => {
         try {
@@ -578,7 +623,7 @@ app.get('/:version?/tasks/:id/logs', async (req, res) => {
 
     res.setHeader('Content-Type', 'text/plain');
 
-    if(logs.pipe) {
+    if (logs.pipe) {
       logs.pipe(res);
       req.on('close', () => {
         try {
@@ -599,6 +644,9 @@ app.get('/:version?/tasks/:id/logs', async (req, res) => {
 // Networks
 
 function isNetworkOwned(network: Docker.NetworkInspectInfo): boolean {
+  if (!isResourceNameAllowed(network.Name)) {
+    return false;
+  }
   return !!(network.Labels && network.Labels[tenantLabel] == tenantLabelValue);
 }
 
@@ -612,17 +660,31 @@ async function isOwnedNetwork(networkId: string): Promise<boolean> {
   }
 }
 
+function augmentNetworkSpecWithTenantName(networkSpec: Docker.NetworkCreateOptions): Docker.NetworkCreateOptions {
+  if (!VIRTUAL_SWARM_MODE) {
+    return networkSpec;
+  }
+
+  // deep copy networkSpec
+  networkSpec = JSON.parse(JSON.stringify(networkSpec));
+
+  // prefix network name with tenant name
+  networkSpec.Name = `${NAME_PREFIX}-${networkSpec.Name}`;
+
+  return networkSpec;
+}
+
 // Endpoint to create a network with ownership label
 app.post('/:version?/networks/create', async (req, res) => {
-  const networkSpec = req.body;
+  const networkSpec: Docker.NetworkCreateOptions = augmentNetworkSpecWithTenantName(req.body);
   networkSpec.Labels = { ...networkSpec.Labels, [tenantLabel]: tenantLabelValue };
 
   try {
-    if(!networkSpec.Name) {
+    if (!networkSpec.Name) {
       res.status(400).send(`Network name is required.`);
       return;
     }
-    if(!isResourceNameAllowed(networkSpec.Name)) {
+    if (!isResourceNameAllowed(networkSpec.Name)) {
       res.status(400).send(`Network name ${networkSpec.Name} is not allowed.`);
       return;
     }
@@ -695,6 +757,12 @@ app.get('/:version?/networks/:id', async (req, res) => {
 // secrets
 
 function isSecretOwned(secret: Docker.Secret): boolean {
+  if (!secret.Spec?.Name) {
+    return false;
+  }
+  if (!isResourceNameAllowed(secret.Spec?.Name)) {
+    return false;
+  }
   return !!(secret.Spec && secret.Spec.Labels && secret.Spec.Labels[tenantLabel] === tenantLabelValue);
 }
 
@@ -708,17 +776,31 @@ async function isOwnedSecret(secretId: string): Promise<boolean> {
   }
 }
 
+function augmentSecretSpecWithTenantName(secretSpec: Docker.SecretSpec): Docker.SecretSpec {
+  if (!VIRTUAL_SWARM_MODE) {
+    return secretSpec;
+  }
+
+  // deep copy secretSpec
+  secretSpec = JSON.parse(JSON.stringify(secretSpec));
+
+  // prefix secret name with tenant name
+  secretSpec.Name = `${NAME_PREFIX}-${secretSpec.Name}`;
+
+  return secretSpec;
+}
+
 // Endpoint to create a secret with ownership label
 app.post('/:version?/secrets/create', async (req, res) => {
-  const secretSpec = req.body;
+  const secretSpec: Docker.SecretSpec = augmentSecretSpecWithTenantName(req.body);
   secretSpec.Labels = { ...secretSpec.Labels, [tenantLabel]: tenantLabelValue };
 
   try {
-    if(!secretSpec.Name) {
+    if (!secretSpec.Name) {
       res.status(400).send(`Secret name is required.`);
       return;
     }
-    if(!isResourceNameAllowed(secretSpec.Name)) {
+    if (!isResourceNameAllowed(secretSpec.Name)) {
       res.status(400).send(`Secret name ${secretSpec.Name} is not allowed.`);
       return;
     }
@@ -808,6 +890,12 @@ app.post('/:version?/secrets/:id/update', async (req, res) => {
 // configs
 
 function isConfigOwned(config: Docker.ConfigInfo): boolean {
+  if (!config.Spec?.Name) {
+    return false;
+  }
+  if (!isResourceNameAllowed(config.Spec?.Name)) {
+    return false;
+  }
   return !!(config.Spec && config.Spec.Labels && config.Spec.Labels[tenantLabel] === tenantLabelValue);
 }
 
@@ -821,17 +909,70 @@ async function isOwnedConfig(configId: string): Promise<boolean> {
   }
 }
 
+function augmentConfigSpecWithTenantName(configSpec: Docker.ConfigSpec): Docker.ConfigSpec {
+  if (!VIRTUAL_SWARM_MODE) {
+    return configSpec;
+  }
+
+  // deep copy configSpec
+  configSpec = JSON.parse(JSON.stringify(configSpec));
+
+  // prefix config name with tenant name
+  configSpec.Name = `${NAME_PREFIX}-${configSpec.Name}`;
+
+  return configSpec;
+}
+
+async function configIdentifierFromName(configName: string): Promise<string> {
+  if(!VIRTUAL_SWARM_MODE) {
+    return configName;
+  }
+
+  // list all configs with the given name
+  const configs = await docker.listConfigs({
+    filters: { name: [`${NAME_PREFIX}-${configName}`] }
+  });
+  const config = configs.find(c => c.Spec?.Name == `${NAME_PREFIX}-${configName}`);
+  if (config) {
+    return config.ID;
+  }
+  throw new Error("Config not found");
+}
+
+function augmentConfigFilter(filters: any): any {
+  if(!VIRTUAL_SWARM_MODE) {
+    return filters;
+  }
+
+  if (VIRTUAL_SWARM_MODE) {
+    if (filters) {
+      if (filters.name) {
+        const newNameFilters = [];
+        if (!Array.isArray(filters.name)) {
+          filters.name = [filters.name];
+        }
+        for (const name of filters.name) {
+          const configName = `${NAME_PREFIX}-${name}`;
+          newNameFilters.push(configName);
+        }
+        filters.name = newNameFilters;
+      }
+    }
+  }
+  return filters;
+}
+
 // Endpoint to create a config with ownership label
 app.post('/:version?/configs/create', async (req, res) => {
-  const configSpec = req.body;
-  configSpec.Labels = { ...configSpec.Labels, [tenantLabel]: tenantLabelValue };
-
   try {
-    if(!configSpec.Name) {
+    const configSpec: Docker.ConfigSpec = augmentConfigSpecWithTenantName(req.body);
+    configSpec.Labels = { ...configSpec.Labels, [tenantLabel]: tenantLabelValue };
+
+    if (!configSpec.Name) {
       res.status(400).send(`Config name is required.`);
       return;
     }
-    if(!isResourceNameAllowed(configSpec.Name)) {
+    if (!isResourceNameAllowed(configSpec.Name)) {
       res.status(400).send(`Config name ${configSpec.Name} is not allowed.`);
       return;
     }
@@ -848,7 +989,8 @@ app.post('/:version?/configs/create', async (req, res) => {
 app.get('/:version?/configs', async (req, res) => {
   try {
     // TODO: push down ownership filtering
-    const filters = req.query.filters as any;
+    const filters = await augmentConfigFilter(req.query.filters);
+
     const configs = await docker.listConfigs({
       filters: filters,
     });
@@ -920,7 +1062,26 @@ app.post('/:version?/configs/:id/update', async (req, res) => {
 
 // volume code
 
+function doesVolumeExist(volumeName: string): Promise<boolean> {
+  return new Promise((resolve, reject) => {
+    docker.getVolume(volumeName).inspect((err, data) => {
+      if (err) {
+        resolve(false);
+      } else {
+        resolve(true);
+      }
+    });
+  });
+}
+
 function isVolumeOwned(volume: Docker.VolumeInspectInfo): boolean {
+  if (!isResourceNameAllowed(volume.Name)) {
+    // Docker volumes created by volume plugins don't have
+    // all labels set, so we can't check ownership
+    // based only on that. We have to rely on the name.
+    return false;
+  }
+
   return !!(volume.Labels && volume.Labels[tenantLabel] == tenantLabelValue);
 }
 
@@ -934,17 +1095,84 @@ async function isOwnedVolume(volumeName: string): Promise<boolean> {
   }
 }
 
-// Endpoint to create a volume with ownership label
-app.post('/:version?/volumes/create', async (req, res) => {
-  const volumeSpec: Docker.VolumeCreateOptions = req.body;
-  volumeSpec.Labels = { ...volumeSpec.Labels, [tenantLabel]: tenantLabelValue };
+function augmentVolumeSpecWithTenantName(volumeSpec: Docker.VolumeCreateOptions): Docker.VolumeCreateOptions {
+  if (!VIRTUAL_SWARM_MODE) {
+    return volumeSpec;
+  }
 
+  // deep copy volumeSpec
+  volumeSpec = JSON.parse(JSON.stringify(volumeSpec));
+
+  // prefix volume name with tenant name
+  volumeSpec.Name = `${NAME_PREFIX}-${volumeSpec.Name}`;
+
+  return volumeSpec;
+}
+
+function augmentVolumeResponse(volume: Docker.VolumeInspectInfo | Docker.VolumeCreateResponse): Docker.VolumeInspectInfo | Docker.VolumeCreateResponse {
+  if (!VIRTUAL_SWARM_MODE) {
+    return volume;
+  }
+
+  // deep copy volume
+  volume = JSON.parse(JSON.stringify(volume));
+
+  // remove tenant name prefix from volume name
+  volume.Name = volume.Name.replace(`${NAME_PREFIX}-`, '');
+
+  return volume;
+}
+
+async function volumeIdentifierFromName(volumeName: string): Promise<string> {
+  if(!VIRTUAL_SWARM_MODE) {
+    return volumeName;
+  }
+
+  const volumes = await docker.listVolumes({
+    filters: { name: [`${NAME_PREFIX}-${volumeName}`] }
+  });
+  const volume = volumes.Volumes.find(v => v.Name == `${NAME_PREFIX}-${volumeName}`);
+  if (volume) {
+    return volume.Name.replace(`${NAME_PREFIX}-`, '');
+  }
+  throw new Error("Volume not found");
+}
+
+function augmentVolumeFilter(filters: any): any {
+  if(!VIRTUAL_SWARM_MODE) {
+    return filters;
+  }
+
+  if (VIRTUAL_SWARM_MODE) {
+    if (filters) {
+      if (filters.name) {
+        const newNameFilters = [];
+        if (!Array.isArray(filters.name)) {
+          filters.name = [filters.name];
+        }
+        for (const name of filters.name) {
+          const volumeName = `${NAME_PREFIX}-${name}`;
+          newNameFilters.push(volumeName);
+        }
+        filters.name = newNameFilters;
+      }
+    }
+  }
+  return filters;
+}
+
+// Endpoint to create a volume with ownership label
+
+app.post('/:version?/volumes/create', async (req, res) => {
   try {
-    if(!volumeSpec.Name) {
+    const volumeSpec: Docker.VolumeCreateOptions = augmentVolumeSpecWithTenantName(req.body);
+    volumeSpec.Labels = { ...volumeSpec.Labels, [tenantLabel]: tenantLabelValue };
+
+    if (!volumeSpec.Name) {
       res.status(400).send(`Volume name is required.`);
       return;
     }
-    if(!isResourceNameAllowed(volumeSpec.Name)) {
+    if (!isResourceNameAllowed(volumeSpec.Name)) {
       res.status(400).send(`Volume name ${volumeSpec.Name} is not allowed.`);
       return;
     }
@@ -972,7 +1200,11 @@ app.post('/:version?/volumes/create', async (req, res) => {
     }
 
     const volume = await docker.createVolume(volumeSpec);
-    res.status(201).json(volume);
+
+    // return volume name without tenant name prefix
+    const response = augmentVolumeResponse(volume);
+
+    res.status(201).json(response);
   } catch (error: any) {
     console.error(error);
     res.status(500).json({ message: error.message });
@@ -982,13 +1214,15 @@ app.post('/:version?/volumes/create', async (req, res) => {
 // Endpoint to list all owned volumes
 app.get('/:version?/volumes', async (req, res) => {
   try {
+    const filters = augmentVolumeFilter(req.query.filters);
+
     // TODO: push down ownership filtering
     const volumes = await docker.listVolumes({
-      filters: req.query.filters as any,
+      filters: filters,
     });
     const ownedVolumes = volumes.Volumes.filter(v => isVolumeOwned(v));
     res.json({
-      Volumes: ownedVolumes,
+      Volumes: ownedVolumes.map(v => augmentVolumeResponse(v)),
       Warnings: volumes.Warnings
     });
   } catch (error: any) {
@@ -999,47 +1233,50 @@ app.get('/:version?/volumes', async (req, res) => {
 
 // Endpoint to delete a volume, respecting ownership
 app.delete('/:version?/volumes/:name', async (req, res) => {
-  const volumeName = req.params.name;
+  try {
+    const volumeName = await volumeIdentifierFromName(req.params.name);
 
-  if (await isOwnedVolume(volumeName)) {
-    try {
+    if (await isOwnedVolume(volumeName)) {
       const volume = docker.getVolume(volumeName);
       await volume.remove({
         force: req.query.force === '1' || req.query.force === 'true'
       });
-      res.status(200).send(`Volume ${volumeName} deleted successfully.`);
-    } catch (error: any) {
-      console.error(error);
-      res.status(500).json({ message: error.message });
+      res.status(204).send(`Volume ${volumeName} deleted successfully.`);
+    } else {
+      res.status(403).send('Access denied: Volume is not owned.');
     }
-  } else {
-    res.status(403).send('Access denied: Volume is not owned.');
+  } catch (error: any) {
+    console.error(error);
+    res.status(500).json({ message: error.message });
   }
 });
 
 // Endpoint to inspect a volume, respecting ownership
 app.get('/:version?/volumes/:name', async (req, res) => {
-  const volumeName = req.params.name;
+  try {
+    const volumeName = await volumeIdentifierFromName(req.params.name);
 
-  if (await isOwnedVolume(volumeName)) {
-    try {
+    if (await isOwnedVolume(volumeName)) {
       const volume = await docker.getVolume(volumeName).inspect();
-      res.json(volume);
-    } catch (error: any) {
-      console.error(error);
-      res.status(500).json({ message: error.message });
+      const response = augmentVolumeResponse(volume);
+
+      res.json(response);
+    } else {
+      res.status(403).send('Access denied: Volume is not owned.');
     }
-  } else {
-    res.status(403).send('Access denied: Volume is not owned.');
+  } catch (error: any) {
+    console.error(error);
+    res.status(500).json({ message: error.message });
   }
 });
 
 // Endpoint to update a volume, respecting ownership (only supported for cluster volumes)
 app.put('/:version?/volumes/:name', async (req, res) => {
-  const volumeName = req.params.name;
-  const version = req.params.version;
-  if (await isOwnedVolume(volumeName)) {
-    try {
+  try {
+    const volumeName = await volumeIdentifierFromName(req.params.name);
+    
+    const version = req.params.version;
+    if (await isOwnedVolume(volumeName)) {
       var optsf = {
         path: `/${version}/volumes/${volumeName}`,
         method: 'PUT',
@@ -1060,13 +1297,12 @@ app.put('/:version?/volumes/:name', async (req, res) => {
         });
       });
       res.send(ret);
-    } catch (error: any) {
-      console.log(error);
-      console.error(error);
-      res.status(500).json({ message: error.message });
+    } else {
+      res.status(403).send('Access denied: Volume is not owned.');
     }
-  } else {
-    res.status(403).send('Access denied: Volume is not owned.');
+  } catch (error: any) {
+    console.error(error);
+    res.status(500).json({ message: error.message });
   }
 });
 
