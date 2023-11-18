@@ -923,8 +923,25 @@ function augmentConfigSpecWithTenantName(configSpec: Docker.ConfigSpec): Docker.
   return configSpec;
 }
 
-async function configIdentifierFromName(configName: string): Promise<string> {
-  if(!VIRTUAL_SWARM_MODE) {
+function augmentConfigResponse(config: Docker.ConfigInfo): Docker.ConfigInfo {
+  if (!VIRTUAL_SWARM_MODE) {
+    return config;
+  }
+  if (!config.Spec) {
+    return config;
+  }
+
+  // deep copy config
+  config = JSON.parse(JSON.stringify(config));
+
+  // remove prefix from config name
+  config.Spec!.Name = config.Spec!.Name.replace(`${NAME_PREFIX}-`, '');
+
+  return config;
+}
+
+async function configIdentifierFromName(configName: string): Promise<string | null> {
+  if (!VIRTUAL_SWARM_MODE) {
     return configName;
   }
 
@@ -936,11 +953,11 @@ async function configIdentifierFromName(configName: string): Promise<string> {
   if (config) {
     return config.ID;
   }
-  throw new Error("Config not found");
+  return null;
 }
 
 function augmentConfigFilter(filters: any): any {
-  if(!VIRTUAL_SWARM_MODE) {
+  if (!VIRTUAL_SWARM_MODE) {
     return filters;
   }
 
@@ -978,7 +995,10 @@ app.post('/:version?/configs/create', async (req, res) => {
     }
 
     const config = await docker.createConfig(configSpec);
-    res.status(201).json(config);
+
+    const response = augmentConfigResponse(config);
+
+    res.status(201).json(response);
   } catch (error: any) {
     console.error(error);
     res.status(500).json({ message: error.message });
@@ -995,7 +1015,10 @@ app.get('/:version?/configs', async (req, res) => {
       filters: filters,
     });
     const ownedConfigs = configs.filter((conf) => isConfigOwned(conf));
-    res.json(ownedConfigs);
+
+    const response = ownedConfigs.map(c => augmentConfigResponse(c));
+
+    res.json(response);
   } catch (error: any) {
     console.error(error);
     res.status(500).json({ message: error.message });
@@ -1004,59 +1027,57 @@ app.get('/:version?/configs', async (req, res) => {
 
 // Endpoint to delete a config, respecting ownership
 app.delete('/:version?/configs/:id', async (req, res) => {
-  const configId = req.params.id;
-
-  if (await isOwnedConfig(configId)) {
-    try {
+  try {
+    const configId = req.params.id;
+    if (await isOwnedConfig(configId)) {
       const config = docker.getConfig(configId);
       await config.remove({});
-      res.status(200).send(`Config ${configId} deleted successfully.`);
-    } catch (error: any) {
-      console.error(error);
-      res.status(500).json({ message: error.message });
+      res.status(204).send(`Config ${configId} deleted successfully.`);
+    } else {
+      res.status(403).send('Access denied: Config is not owned.');
     }
-  } else {
-    res.status(403).send('Access denied: Config is not owned.');
+  } catch (error: any) {
+    console.error(error);
+    res.status(500).json({ message: error.message });
   }
 });
 
 // Endpoint to inspect a config, respecting ownership
 app.get('/:version?/configs/:id', async (req, res) => {
-  const configId = req.params.id;
-
-  if (await isOwnedConfig(configId)) {
-    try {
+  try {
+    const configId = req.params.id;
+    if (await isOwnedConfig(configId)) {
       const config = docker.getConfig(configId);
       const configInfo = await config.inspect();
       res.json(configInfo);
-    } catch (error: any) {
-      console.error(error);
-      res.status(500).json({ message: error.message });
+    } else {
+      // 404 or docker cli is not happy in docker stack creation
+      res.status(404).send('Access denied: Config is not owned.');
     }
-  } else {
-    // 404 or docker cli is not happy in docker stack creation
-    res.status(404).send('Access denied: Config is not owned.');
+  } catch (error: any) {
+    console.error(error);
+    res.status(500).json({ message: error.message });
   }
 });
 
 // Endpoint to update a config, respecting ownership
 app.post('/:version?/configs/:id/update', async (req, res) => {
-  const configId = req.params.id;
+  try {
+    const configId = req.params.id;
 
-  if (await isOwnedConfig(configId)) {
-    const configSpec = req.body;
-    configSpec.Labels = { ...configSpec.Labels, [tenantLabel]: tenantLabelValue };
-    try {
+    if (await isOwnedConfig(configId)) {
+      const configSpec = req.body;
+      configSpec.Labels = { ...configSpec.Labels, [tenantLabel]: tenantLabelValue };
       configSpec.version = req.query.version;
       const config = docker.getConfig(configId);
       const configInfo = await config.update(configSpec);
       res.json(configInfo);
-    } catch (error: any) {
-      console.error(error);
-      res.status(500).json({ message: error.message });
+    } else {
+      res.status(403).send('Access denied: Config is not owned.');
     }
-  } else {
-    res.status(403).send('Access denied: Config is not owned.');
+  } catch (error: any) {
+    console.error(error);
+    res.status(500).json({ message: error.message });
   }
 });
 
@@ -1123,23 +1144,16 @@ function augmentVolumeResponse(volume: Docker.VolumeInspectInfo | Docker.VolumeC
   return volume;
 }
 
-async function volumeIdentifierFromName(volumeName: string): Promise<string> {
-  if(!VIRTUAL_SWARM_MODE) {
+function volumeIdentifierFromName(volumeName: string): string {
+  if (!VIRTUAL_SWARM_MODE) {
     return volumeName;
   }
 
-  const volumes = await docker.listVolumes({
-    filters: { name: [`${NAME_PREFIX}-${volumeName}`] }
-  });
-  const volume = volumes.Volumes.find(v => v.Name == `${NAME_PREFIX}-${volumeName}`);
-  if (volume) {
-    return volume.Name.replace(`${NAME_PREFIX}-`, '');
-  }
-  throw new Error("Volume not found");
+  return `${NAME_PREFIX}-${volumeName}`;
 }
 
 function augmentVolumeFilter(filters: any): any {
-  if(!VIRTUAL_SWARM_MODE) {
+  if (!VIRTUAL_SWARM_MODE) {
     return filters;
   }
 
@@ -1234,7 +1248,7 @@ app.get('/:version?/volumes', async (req, res) => {
 // Endpoint to delete a volume, respecting ownership
 app.delete('/:version?/volumes/:name', async (req, res) => {
   try {
-    const volumeName = await volumeIdentifierFromName(req.params.name);
+    const volumeName = volumeIdentifierFromName(req.params.name);
 
     if (await isOwnedVolume(volumeName)) {
       const volume = docker.getVolume(volumeName);
@@ -1254,7 +1268,7 @@ app.delete('/:version?/volumes/:name', async (req, res) => {
 // Endpoint to inspect a volume, respecting ownership
 app.get('/:version?/volumes/:name', async (req, res) => {
   try {
-    const volumeName = await volumeIdentifierFromName(req.params.name);
+    const volumeName = volumeIdentifierFromName(req.params.name);
 
     if (await isOwnedVolume(volumeName)) {
       const volume = await docker.getVolume(volumeName).inspect();
@@ -1273,8 +1287,8 @@ app.get('/:version?/volumes/:name', async (req, res) => {
 // Endpoint to update a volume, respecting ownership (only supported for cluster volumes)
 app.put('/:version?/volumes/:name', async (req, res) => {
   try {
-    const volumeName = await volumeIdentifierFromName(req.params.name);
-    
+    const volumeName = volumeIdentifierFromName(req.params.name);
+
     const version = req.params.version;
     if (await isOwnedVolume(volumeName)) {
       var optsf = {
