@@ -2,11 +2,11 @@ version: '3.8'
 
 services:
   app:
-    image: ghcr.io/neuroforgede/swarmgate:0.4.10
+    image: ghcr.io/neuroforgede/swarmgate:0.4.11
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
-      - TENANT_NAME=your-owner-label-value
+      - OWNER_LABEL_VALUE=your-owner-label-value
       - ALLOWED_REGULAR_VOLUMES_DRIVERS=local
       - ALLOWED_VOLUME_TYPES=bind,volume,tmpfs,npipe,cluster
       - ALLOW_PORT_EXPOSE=true
