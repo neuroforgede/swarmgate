@@ -6,7 +6,7 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
-      - OWNER_LABEL_VALUE=your-owner-label-value
+      - OWNER_LABEL_VALUE=tenant1
       - ALLOWED_REGULAR_VOLUMES_DRIVERS=local
       - ALLOWED_VOLUME_TYPES=bind,volume,tmpfs,npipe,cluster
       - ALLOW_PORT_EXPOSE=true
