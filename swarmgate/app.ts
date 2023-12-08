@@ -174,6 +174,21 @@ app.get('/:version?/nodes', async (req, res) => {
   }
 });
 
+app.get('/nodes/:id', async (req, res) => {
+  const nodeId = req.params.id;
+
+  try {
+    const node = await docker.getNode(nodeId).inspect();
+    res.json(node);
+  } catch (error: any) {
+    if (error.statusCode === 404) {
+      res.status(404).send('Node not found');
+    } else {
+      res.status(500).json({ message: error.message });
+    }
+  }
+});
+
 // Endpoint to get Docker info
 app.get('/:version?/info', async (req, res) => {
   try {
@@ -486,8 +501,6 @@ app.get('/:version?/services/:id/logs', async (req, res) => {
       timestamps: req.query.timestamps === '1' || req.query.timestamps === 'true',
       tail: req.query.tail as any,
     });
-
-    res.setHeader('Content-Type', 'text/plain');
 
     if(logs.pipe) {
       logs.pipe(res);
