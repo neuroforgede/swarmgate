@@ -53,11 +53,11 @@ version: '3.8'
 
 services:
   proxy:
-    image: ghcr.io/neuroforgede/swarmgate:0.4.10
+    image: ghcr.io/neuroforgede/swarmgate:0.5.0
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
-      - TENANT_NAME=your-owner-label-value
+      - OWNER_LABEL_VALUE=tenant1
       - ALLOWED_REGULAR_VOLUMES_DRIVERS=local
       - ALLOWED_VOLUME_TYPES=bind,volume,tmpfs,npipe,cluster
       - ALLOW_PORT_EXPOSE=true
