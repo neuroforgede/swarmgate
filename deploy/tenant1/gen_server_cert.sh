@@ -8,7 +8,7 @@ SERVER_CSR="server-csr.pem"
 SERVER_CERT="server-cert.pem"
 SERVER_EXT="server-ext.cnf"
 
-DOMAIN="tenant1.local"
+DOMAIN="localhost"
 
 # Create server config file for SAN
 cat > $SERVER_EXT <<- EOF
