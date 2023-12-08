@@ -14,7 +14,7 @@ const ALLOWED_VOLUME_TYPES = process.env.ALLOWED_VOLUME_TYPES?.split(',') || ['b
 const ALLOW_PORT_EXPOSE = process.env.ALLOW_PORT_EXPOSE === '1' || process.env.ALLOW_PORT_EXPOSE === 'true';
 const SERVICE_ALLOW_LISTED_NETWORKS = process.env.SERVICE_ALLOW_LISTED_NETWORKS?.split(',') || [];
 
-const tenantLabel = "com.github.com.nfcompose.swarmgate.tenant";
+const tenantLabel = "com.github.neuroforgede.swarmgate.tenant";
 // some older versions have OWNER_LABEL_VALUE set but not TENANT_NAME
 const tenantLabelValue = process.env.TENANT_NAME || process.env.OWNER_LABEL_VALUE;
 
