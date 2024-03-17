@@ -316,8 +316,8 @@ app.post('/:version?/services/:id/update', async (req, res) => {
     try {
       const taskTemplate: TaskTemplate = updateSpec.TaskTemplate as any;
 
+      // might be null in case of rollback
       if (taskTemplate) {
-        // might be null in case of rollback
         if (!await isValidTaskTemplate(res, taskTemplate)) {
           return;
         }
