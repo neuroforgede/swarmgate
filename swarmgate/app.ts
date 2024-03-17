@@ -141,91 +141,20 @@ function pingWithHeaders(): Promise<{ data: string, headers: http.IncomingHttpHe
   });
 }
 
-app.head('/_ping', async (req, res) => {
-  try {
-    const pingResponse = await pingWithHeaders();
-    for (const key of Object.keys(pingResponse.headers)) {
-      res.header(key, pingResponse.headers[key]);
-    }
-    res.send();
-  } catch (error: any) {
-    console.log(error);
-    console.error(error);
-    res.status(500).json({ message: error.message });
-  }
-});
+// basic plumbing, no need to check for ownership
+// also, these don't change the state of the system
+// as they are only GETs
+app.head('/_ping', proxyRequestToDocker);
+app.get('/_ping', proxyRequestToDocker);
+app.get('/:version?/version', proxyRequestToDocker);
+app.get('/:version?/nodes', proxyRequestToDocker);
+app.get('/:version?/nodes/:id', proxyRequestToDocker);
+app.get('/:version?/info', proxyRequestToDocker);
 
-app.get('/_ping', async (req, res) => {
-  try {
-    const pingResponse = await pingWithHeaders();
-    for (const key of Object.keys(pingResponse.headers)) {
-      res.header(key, pingResponse.headers[key]);
-    }
-    res.send(pingResponse.data);
-  } catch (error: any) {
-    console.log(error);
-    console.error(error);
-    res.status(500).json({ message: error.message });
-  }
-});
+// make image resolution work
+app.get('/:version?/distribution/:name/json', proxyRequestToDocker);
 
-app.get('/:version?/version', async (req, res) => {
-  try {
-    const version = req.params.version;
-    if (version) {
-      console.log(`Received version request for API version: ${version}`);
-    }
-    const versionInfo = await docker.version();
-    res.json(versionInfo);
-  } catch (error: any) {
-    console.error(error);
-    res.status(500).json({ message: error.message });
-  }
-});
-
-app.get('/:version?/nodes', async (req, res) => {
-  try {
-    const filters = req.query.filters as any;
-    // Fetching all nodes
-    const nodes = await docker.listNodes({
-      filters: filters,
-    });
-
-    // Since we don't modify nodes and there's no concept of ownership,
-    // we directly return all nodes. Modify this as per your requirement.
-    res.json(nodes);
-  } catch (error: any) {
-    console.error(error);
-    res.status(500).json({ message: error.message });
-  }
-});
-
-app.get('/nodes/:id', async (req, res) => {
-  const nodeId = req.params.id;
-
-  try {
-    const node = await docker.getNode(nodeId).inspect();
-    res.json(node);
-  } catch (error: any) {
-    if (error.statusCode === 404) {
-      res.status(404).send('Node not found');
-    } else {
-      res.status(500).json({ message: error.message });
-    }
-  }
-});
-
-// Endpoint to get Docker info
-app.get('/:version?/info', async (req, res) => {
-  try {
-    const info = await docker.info();
-    res.json(info);
-  } catch (error: any) {
-    console.error(error);
-    res.status(500).json({ message: error.message });
-  }
-});
-
+// ATTENTION: we dont support requests to /:version?/swarm as this as this would give access to the swarm join token and break isolation
 
 // Services
 function isServiceOwned(service: Docker.Service): boolean {
@@ -1053,45 +982,3 @@ app.put('/:version?/volumes/:name', async (req, res) => {
   }
 });
 
-
-app.get('/:version?/distribution/:rest(*)/json', async (req, res) => {
-  const rest = req.params.rest;
-  try {
-    var optsf = {
-      path: '/distribution/' + rest + '/json',
-      method: 'GET',
-      statusCodes: {
-        200: true,
-        404: 'no such service',
-        500: 'server error'
-      },
-      headers: req.headers
-    };
-
-    const ret = await new docker.modem.Promise(function (resolve, reject) {
-      docker.modem.dial(optsf, function (err, data) {
-        if (err) {
-          return reject(err);
-        }
-        resolve(data);
-      });
-    });
-    res.send(ret);
-  } catch (error: any) {
-    console.log(error);
-    console.error(error);
-    res.status(500).json({ message: error.message });
-  }
-
-});
-
-
-app.get('/:version?/swarm', async (req, res) => {
-  try {
-    const swarmInspect = await docker.swarmInspect();
-    res.json(swarmInspect);
-  } catch (error: any) {
-    console.error(error);
-    res.status(500).json({ message: error.message });
-  }
-});
