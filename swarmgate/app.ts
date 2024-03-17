@@ -50,11 +50,11 @@ export const app = express();
 app.disable('etag');
 
 morgan.token('client-cn', (req: any) => {
-  if(!req.client || !req.client.authorized) {
+  if (!req.client || !req.client.authorized) {
     return 'Unauthorized';
   }
   const cert = req.socket.getPeerCertificate();
-  if(!cert) {
+  if (!cert) {
     return 'Unauthorized';
   }
   if (cert.subject) {
@@ -82,6 +82,32 @@ if (!TLS_DISABLED) {
 };
 app.use(clientCertAuthMiddleware);
 app.use(bodyParser.json());
+
+function proxyRequestToDocker(req: express.Request, res: express.Response) {
+  const options = {
+    socketPath: '/var/run/docker.sock',
+    path: req.url,
+    method: req.method,
+    headers: req.headers,
+  };
+
+  // Create a request to the Unix socket
+  const proxyReq = http.request(options, (proxyRes) => {
+    // Pipe the response from the Unix socket back to the original response
+    res.writeHead(proxyRes.statusCode || 500, proxyRes.headers);
+    proxyRes.pipe(res);
+  });
+
+  // Pipe the original request body to the Unix socket
+  req.pipe(proxyReq);
+
+  // Handle errors in the request to the Unix socket
+  proxyReq.on('error', (err) => {
+    console.error('Error connecting to Unix socket:', err);
+    res.writeHead(500);
+    res.end('Internal server error');
+  });
+}
 
 
 // app.use(audit());
@@ -342,11 +368,11 @@ app.post('/:version?/services/create', async (req, res) => {
   try {
     const taskTemplate: TaskTemplate = serviceSpec.TaskTemplate as any;
 
-    if(!serviceSpec.Name) {
+    if (!serviceSpec.Name) {
       res.status(400).send(`Service name is required.`);
       return;
     }
-    if(!isResourceNameAllowed(serviceSpec.Name)) {
+    if (!isResourceNameAllowed(serviceSpec.Name)) {
       res.status(400).send(`Service name ${serviceSpec.Name} is not allowed.`);
       return;
     }
@@ -355,7 +381,7 @@ app.post('/:version?/services/create', async (req, res) => {
       return;
     }
 
-    if(serviceSpec.EndpointSpec && !await isValidEndpointSpec(res, serviceSpec.EndpointSpec)) {
+    if (serviceSpec.EndpointSpec && !await isValidEndpointSpec(res, serviceSpec.EndpointSpec)) {
       return;
     }
 
@@ -402,7 +428,7 @@ app.post('/:version?/services/:id/update', async (req, res) => {
         }
       }
 
-      if(updateSpec.EndpointSpec && !await isValidEndpointSpec(res, updateSpec.EndpointSpec)) {
+      if (updateSpec.EndpointSpec && !await isValidEndpointSpec(res, updateSpec.EndpointSpec)) {
         return;
       }
 
@@ -483,6 +509,7 @@ app.delete('/:version?/services/:id', async (req, res) => {
   }
 });
 
+
 app.get('/:version?/services/:id/logs', async (req, res) => {
   const serviceId = req.params.id;
 
@@ -490,34 +517,7 @@ app.get('/:version?/services/:id/logs', async (req, res) => {
     return res.status(403).json({ message: 'Access Denied: Service not owned' });
   }
 
-  try {
-    const service = docker.getService(serviceId);
-    const logs = await service.logs({
-      details: req.query.details === '1' || req.query.details === 'true',
-      follow: req.query.follow === '1' || req.query.follow === 'true',
-      stdout: req.query.stdout === '1' || req.query.stdout === 'true',
-      stderr: req.query.stderr === '1' || req.query.stderr === 'true',
-      since: req.query.since as any,
-      timestamps: req.query.timestamps === '1' || req.query.timestamps === 'true',
-      tail: req.query.tail as any,
-    });
-
-    if(logs.pipe) {
-      logs.pipe(res);
-      req.on('close', () => {
-        try {
-          (logs as any).destroy();
-        } catch (error) {
-          console.error(error);
-        }
-      });
-    } else {
-      res.send(logs);
-    }
-  } catch (error: any) {
-    console.error(error);
-    res.status(500).json({ message: error.message });
-  }
+  proxyRequestToDocker(req, res);
 });
 
 // Endpoint to list tasks, showing only those related to owned services
@@ -576,37 +576,7 @@ app.get('/:version?/tasks/:id/logs', async (req, res) => {
     return res.status(403).json({ message: 'Access Denied: Service not owned' });
   }
 
-  try {
-    const task = docker.getTask(taskId);
-    // dockerode has this, but not in the typings
-    const logs = await (task as any).logs({
-      details: req.query.details === '1' || req.query.details === 'true',
-      follow: req.query.follow === '1' || req.query.follow === 'true',
-      stdout: req.query.stdout === '1' || req.query.stdout === 'true',
-      stderr: req.query.stderr === '1' || req.query.stderr === 'true',
-      since: req.query.since as any,
-      timestamps: req.query.timestamps === '1' || req.query.timestamps === 'true',
-      tail: req.query.tail as any,
-    });
-
-    res.setHeader('Content-Type', 'text/plain');
-
-    if(logs.pipe) {
-      logs.pipe(res);
-      req.on('close', () => {
-        try {
-          (logs as any).destroy();
-        } catch (error) {
-          console.error(error);
-        }
-      });
-    } else {
-      res.send(logs);
-    }
-  } catch (error: any) {
-    console.error(error);
-    res.status(500).json({ message: error.message });
-  }
+  proxyRequestToDocker(req, res);
 });
 
 // Networks
@@ -631,11 +601,11 @@ app.post('/:version?/networks/create', async (req, res) => {
   networkSpec.Labels = { ...networkSpec.Labels, [tenantLabel]: tenantLabelValue };
 
   try {
-    if(!networkSpec.Name) {
+    if (!networkSpec.Name) {
       res.status(400).send(`Network name is required.`);
       return;
     }
-    if(!isResourceNameAllowed(networkSpec.Name)) {
+    if (!isResourceNameAllowed(networkSpec.Name)) {
       res.status(400).send(`Network name ${networkSpec.Name} is not allowed.`);
       return;
     }
@@ -727,11 +697,11 @@ app.post('/:version?/secrets/create', async (req, res) => {
   secretSpec.Labels = { ...secretSpec.Labels, [tenantLabel]: tenantLabelValue };
 
   try {
-    if(!secretSpec.Name) {
+    if (!secretSpec.Name) {
       res.status(400).send(`Secret name is required.`);
       return;
     }
-    if(!isResourceNameAllowed(secretSpec.Name)) {
+    if (!isResourceNameAllowed(secretSpec.Name)) {
       res.status(400).send(`Secret name ${secretSpec.Name} is not allowed.`);
       return;
     }
@@ -840,11 +810,11 @@ app.post('/:version?/configs/create', async (req, res) => {
   configSpec.Labels = { ...configSpec.Labels, [tenantLabel]: tenantLabelValue };
 
   try {
-    if(!configSpec.Name) {
+    if (!configSpec.Name) {
       res.status(400).send(`Config name is required.`);
       return;
     }
-    if(!isResourceNameAllowed(configSpec.Name)) {
+    if (!isResourceNameAllowed(configSpec.Name)) {
       res.status(400).send(`Config name ${configSpec.Name} is not allowed.`);
       return;
     }
@@ -953,11 +923,11 @@ app.post('/:version?/volumes/create', async (req, res) => {
   volumeSpec.Labels = { ...volumeSpec.Labels, [tenantLabel]: tenantLabelValue };
 
   try {
-    if(!volumeSpec.Name) {
+    if (!volumeSpec.Name) {
       res.status(400).send(`Volume name is required.`);
       return;
     }
-    if(!isResourceNameAllowed(volumeSpec.Name)) {
+    if (!isResourceNameAllowed(volumeSpec.Name)) {
       res.status(400).send(`Volume name ${volumeSpec.Name} is not allowed.`);
       return;
     }
