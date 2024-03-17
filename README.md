@@ -112,6 +112,12 @@ my_proxy_app.1.92wjwd0fz492@ubuntu    | ::ffff:10.0.0.2 - - [12/Nov/2023:18:41:0
 my_proxy_app.1.92wjwd0fz492@ubuntu    | ::ffff:10.0.0.2 - - [12/Nov/2023:18:41:00 +0000] "GET /v1.43/info HTTP/1.1" 200 3858 "-" "Docker-Client/24.0.5 (linux)" - Client-CN: Client
 ```
 
+To deploy services, you can simply use the docker cli but make sure all resources are prefixed with the tenant name (e.g. `tenant1` in the following example):
+
+```
+docker service create --name tenant1_nginx nginx
+```
+
 ## 🔧 Environment Variables
 
 - ALLOWED_REGULAR_VOLUMES_DRIVERS: Comma-separated list of allowed volume drivers.
