@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   swarmgate:
-    image: ghcr.io/neuroforgede/swarmgate:0.4.11
+    image: ghcr.io/neuroforgede/swarmgate:0.7.0
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
