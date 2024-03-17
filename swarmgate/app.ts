@@ -110,6 +110,50 @@ function proxyRequestToDocker(req: express.Request, res: express.Response) {
 }
 
 
+function checkPermissionsOnDockerImage(image: string, authHeader: string | string[] | null | undefined): Promise<{
+  success: boolean,
+  errorMessage?: string
+}> {
+  const headers: { [header: string]: string | string[] } = {};
+  if (authHeader) {
+    headers['x-registry-auth'] = authHeader;
+  }
+
+  const options = {
+    socketPath: '/var/run/docker.sock',
+    path: `/distribution/${image}/json`,
+    method: 'GET',
+    headers: headers,
+  };
+
+  return new Promise((resolve, reject) => {
+    const proxyReq = http.request(options, (proxyRes: http.IncomingMessage) => {
+      let data = '';
+      proxyRes.on('data', (chunk) => {
+        data += chunk;
+      });
+      proxyRes.on('end', () => {
+        if (proxyRes.statusCode === 200) {
+          resolve({ success: true });
+        } else {
+          const parsed: { message: string } = JSON.parse(data);
+          resolve({ success: false, errorMessage: parsed.message });
+        }
+      });
+    });
+
+    proxyReq.on('error', (err) => {
+      console.error('Error connecting to Unix socket:', err);
+      resolve({
+        success: false,
+        errorMessage: 'Failed to check permissions on Docker image.'
+      });
+    });
+
+    proxyReq.end();
+  });
+}
+
 // app.use(audit());
 
 // basic plumbing, no need to check for ownership
@@ -175,7 +219,8 @@ type TaskTemplate = {
     Secrets?: { SecretName: string }[],
     Configs?: { ConfigName: string }[],
     Mounts?: { Type: string, Source: string, VolumeOptions?: { Driver?: string, Labels?: { [key: string]: string } } }[],
-    Labels?: { [key: string]: string }
+    Labels?: { [key: string]: string },
+    Image: string
   },
   Runtime?: string,
   Networks?: { Target: string }[],
@@ -291,9 +336,18 @@ app.post('/:version?/services/create', async (req, res) => {
     }
 
     // TODO: verify privileges, capability-add and capability-drop
-    // TODO: setup default ulimits 
+    // TODO: setup default ulimits
 
-    const authHeader = req.headers['X-Registry-Auth'];
+    const authHeader = req.headers['x-registry-auth'];
+
+    if (taskTemplate.ContainerSpec?.Image) {
+      const permissionCheckResult = await checkPermissionsOnDockerImage(taskTemplate.ContainerSpec?.Image, authHeader);
+      if (!permissionCheckResult.success) {
+        res.status(403).send(permissionCheckResult.errorMessage);
+        return;
+      }
+    }
+
     if (authHeader) {
       const auth = JSON.parse(Buffer.from(authHeader as string, 'base64').toString('utf-8'));
       const service = await docker.createService(auth, serviceSpec);
@@ -338,7 +392,16 @@ app.post('/:version?/services/:id/update', async (req, res) => {
       updateSpec.registryAuthFrom = req.query.registryAuthFrom;
       updateSpec.rollback = req.query.rollback;
 
-      const authHeader = req.headers['X-Registry-Auth'];
+      const authHeader = req.headers['x-registry-auth'];
+
+      if (taskTemplate.ContainerSpec?.Image) {
+        const permissionCheckResult = await checkPermissionsOnDockerImage(taskTemplate.ContainerSpec?.Image, authHeader);
+        if (!permissionCheckResult.success) {
+          res.status(403).send(permissionCheckResult.errorMessage);
+          return;
+        }
+      }
+
       if (authHeader) {
         const auth = JSON.parse(Buffer.from(authHeader as string, 'base64').toString('utf-8'));
         const response = await service.update(auth, updateSpec);
