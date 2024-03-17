@@ -112,35 +112,6 @@ function proxyRequestToDocker(req: express.Request, res: express.Response) {
 
 // app.use(audit());
 
-// manually call the docker socket to return all relevant headers
-function pingWithHeaders(): Promise<{ data: string, headers: http.IncomingHttpHeaders }> {
-  const socketPath = '/var/run/docker.sock';
-  const options = {
-    socketPath,
-    path: '/_ping',
-  };
-  return new Promise((resolve, reject) => {
-    const request = http.get(options, (res) => {
-      let data = '';
-
-      res.on('data', (chunk) => {
-        data += chunk;
-      });
-
-      res.on('end', () => {
-        resolve({
-          data: data,
-          headers: res.headers
-        });
-      });
-    });
-
-    request.on('error', (e) => {
-      reject(e.message);
-    });
-  });
-}
-
 // basic plumbing, no need to check for ownership
 // also, these don't change the state of the system
 // as they are only GETs
