@@ -3,6 +3,7 @@ import Docker from 'dockerode';
 import bodyParser from 'body-parser';
 import morgan from 'morgan';
 import * as http from 'http';
+import fs from 'fs';
 
 const docker = new Docker({ socketPath: '/var/run/docker.sock' });
 
@@ -19,6 +20,63 @@ const tenantLabel = "com.github.neuroforgede.swarmgate.tenant";
 const tenantLabelValue = process.env.TENANT_NAME || process.env.OWNER_LABEL_VALUE;
 
 const TLS_DISABLED = process.env.TLS_DISABLED === '1' || process.env.TLS_DISABLED === 'true';
+
+const ONLY_KNOWN_REGISTRIES = process.env.ONLY_KNOWN_REGISTRIES === '1' || process.env.ONLY_KNOWN_REGISTRIES === 'true';
+
+const REGISTRY_AUTH_OVERRIDES_PATH = process.env.REGISTRY_AUTH_OVERRIDES_PATH || '/run/secrets/registry_auth_overrides';
+
+type RegistryAuth = {
+  anonymous?: boolean,
+  username?: string,
+  password?: string
+}
+
+type RegistryAuthPerDockerRegistry = {
+  [registry: string]: RegistryAuth
+}
+
+const registryAuthOverrides: RegistryAuthPerDockerRegistry = {};
+try {
+  // if the file does not exist, we will just ignore it
+  const overrideExists = fs.existsSync(REGISTRY_AUTH_OVERRIDES_PATH);
+  if (overrideExists) {
+    console.log(`Loading registry auth overrides from ${REGISTRY_AUTH_OVERRIDES_PATH}`);
+    const registryAuthOverridesRaw: RegistryAuthPerDockerRegistry = require(REGISTRY_AUTH_OVERRIDES_PATH);
+    for (const [registry, auth] of Object.entries(registryAuthOverridesRaw)) {
+      registryAuthOverrides[registry] = auth;
+    }
+  } else {
+    console.log(`No registry auth overrides file not found at ${REGISTRY_AUTH_OVERRIDES_PATH}`);
+  }
+} catch (error: any) {
+  console.error(`Failed to load registry auth overrides: ${error.message}`);
+}
+
+function getRegistryFromDockerImage(image: string): string {
+  const parts = image.split('/');
+  if (parts.length < 2) {
+    return '';
+  }
+  return parts[0];
+}
+
+function getAuthForRegistry(registry: string): RegistryAuth | undefined {
+  return registryAuthOverrides[registry];
+}
+
+function getAuthForDockerImage(image: string): {
+  auth: RegistryAuth | undefined,
+  registry: string
+} {
+  let registry = getRegistryFromDockerImage(image);
+  if (!registry) {
+    registry = 'docker.io';
+  }
+  return {
+    auth: getAuthForRegistry(registry),
+    registry: registry
+  };
+}
 
 if (!tenantLabelValue) {
   console.error("TENANT_NAME environment variable is not set.");
@@ -110,13 +168,15 @@ function proxyRequestToDocker(req: express.Request, res: express.Response) {
 }
 
 
-function checkPermissionsOnDockerImage(image: string, authHeader: string | string[] | null | undefined): Promise<{
+function checkPermissionsOnDockerImage(image: string, registryAuth?: RegistryAuth): Promise<{
   success: boolean,
   errorMessage?: string
 }> {
   const headers: { [header: string]: string | string[] } = {};
-  if (authHeader) {
-    headers['x-registry-auth'] = authHeader;
+  if (registryAuth) {
+    // make base auth header by using the username and password and base64 encoding them
+    // like with basic auth
+    headers['x-registry-auth'] = btoa(`${registryAuth.username}:${registryAuth.password}`);
   }
 
   const options = {
@@ -338,19 +398,24 @@ app.post('/:version?/services/create', async (req, res) => {
     // TODO: verify privileges, capability-add and capability-drop
     // TODO: setup default ulimits
 
-    const authHeader = req.headers['x-registry-auth'];
-
-    if (taskTemplate.ContainerSpec?.Image) {
-      const permissionCheckResult = await checkPermissionsOnDockerImage(taskTemplate.ContainerSpec?.Image, authHeader);
-      if (!permissionCheckResult.success) {
-        res.status(403).send(permissionCheckResult.errorMessage);
-        return;
-      }
+    const registryAuth = getAuthForDockerImage(taskTemplate.ContainerSpec!.Image);
+    if (ONLY_KNOWN_REGISTRIES && !registryAuth) {
+      res.status(403).send('Access denied: Only known registries are allowed.');
+      return;
     }
 
-    if (authHeader) {
-      const auth = JSON.parse(Buffer.from(authHeader as string, 'base64').toString('utf-8'));
-      const service = await docker.createService(auth, serviceSpec);
+    const permissionCheckResult = await checkPermissionsOnDockerImage(taskTemplate.ContainerSpec!.Image, registryAuth.auth);
+    if (!permissionCheckResult.success) {
+      res.status(403).send(permissionCheckResult.errorMessage);
+      return;
+    }
+
+    if (registryAuth.auth && !registryAuth.auth.anonymous) {
+      const service = await docker.createService({
+        username: registryAuth.auth.username!,
+        password: registryAuth.auth.password!,
+        serveraddress: registryAuth.registry,
+      }, serviceSpec);
       res.status(201).json(service);
       return;
     }
@@ -392,19 +457,24 @@ app.post('/:version?/services/:id/update', async (req, res) => {
       updateSpec.registryAuthFrom = req.query.registryAuthFrom;
       updateSpec.rollback = req.query.rollback;
 
-      const authHeader = req.headers['x-registry-auth'];
-
-      if (taskTemplate.ContainerSpec?.Image) {
-        const permissionCheckResult = await checkPermissionsOnDockerImage(taskTemplate.ContainerSpec?.Image, authHeader);
-        if (!permissionCheckResult.success) {
-          res.status(403).send(permissionCheckResult.errorMessage);
-          return;
-        }
+      const registryAuth = getAuthForDockerImage(taskTemplate.ContainerSpec!.Image);
+      if (ONLY_KNOWN_REGISTRIES && !registryAuth) {
+        res.status(403).send('Access denied: Only known registries are allowed.');
+        return;
       }
 
-      if (authHeader) {
-        const auth = JSON.parse(Buffer.from(authHeader as string, 'base64').toString('utf-8'));
-        const response = await service.update(auth, updateSpec);
+      const permissionCheckResult = await checkPermissionsOnDockerImage(taskTemplate.ContainerSpec!.Image, registryAuth.auth);
+      if (!permissionCheckResult.success) {
+        res.status(403).send(permissionCheckResult.errorMessage);
+        return;
+      }
+
+      if (registryAuth.auth && !registryAuth.auth.anonymous) {
+        const response = await service.update({
+          username: registryAuth.auth.username!,
+          password: registryAuth.auth.password!,
+          serveraddress: registryAuth.registry,
+        }, updateSpec);
         res.json(response);
         return;
       }
