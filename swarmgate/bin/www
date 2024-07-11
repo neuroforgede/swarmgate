@@ -17,9 +17,11 @@ if (!TLS_DISABLED) {
   const https = require('https');
   console.log('TLS is enabled');
 
-  if(!process.env.TLS_KEY_FILE || !process.env.TLS_CERT_FILE || !process.env.TLS_CA_FILE) {
+  if (!process.env.TLS_KEY_FILE || !process.env.TLS_CERT_FILE || !process.env.TLS_CA_FILE) {
     console.error('ERROR: TLS is enabled but one or more of the following environment variables are not set: TLS_KEY_FILE, TLS_CERT_FILE, TLS_CA_FILE');
+    process.exit(1); // Exit the process with an error code
   }
+
   const options = {
     key: fs.readFileSync(process.env.TLS_KEY_FILE),
     cert: fs.readFileSync(process.env.TLS_CERT_FILE),
@@ -27,6 +29,11 @@ if (!TLS_DISABLED) {
     requestCert: true, // Server will request a certificate from clients - this is required for docker authentication
     rejectUnauthorized: true // Reject any connection not authorized with the CA certificate
   };
+
+  if (process.env.TLS_CRL_FILE) {
+    options.crl = fs.readFileSync(process.env.TLS_CRL_FILE); // Add the CRL file if it exists
+  }
+
   server = https.createServer(options, app);
   server.listen(PORT, function () {
     console.log(`Docker Swarm Multitenant Proxy is ready and listening on port ${PORT}`);
