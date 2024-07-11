@@ -3,6 +3,8 @@ import bodyParser from 'body-parser';
 import morgan from 'morgan';
 import { setupRoutes } from './routes';
 
+const TLS_DISABLED = process.env.TLS_DISABLED === '1' || process.env.TLS_DISABLED === 'true';
+
 export const app = express();
 app.disable('etag');
 
