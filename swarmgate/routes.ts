@@ -132,7 +132,7 @@ export function setupRoutes(tenantLabelValue: string) {
         if (registryAuth) {
             // make base auth header by using the username and password and base64 encoding them
             // like with basic auth
-            headers['x-registry-auth'] = btoa(`${registryAuth.username}:${registryAuth.password}`);
+            headers['x-registry-auth'] = Buffer.from(`${registryAuth.username}:${registryAuth.password}`).toString("base64url");
         }
 
         const options = {
@@ -362,7 +362,7 @@ export function setupRoutes(tenantLabelValue: string) {
 
             const permissionCheckResult = await checkPermissionsOnDockerImage(taskTemplate.ContainerSpec!.Image, registryAuth.auth);
             if (!permissionCheckResult.success) {
-                res.status(403).send(permissionCheckResult.errorMessage);
+                res.status(403).send("Permission check failed, Error:" + permissionCheckResult.errorMessage);
                 return;
             }
 
