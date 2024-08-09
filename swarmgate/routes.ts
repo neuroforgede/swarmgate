@@ -40,7 +40,7 @@ try {
         console.log(`Loading registry auth overrides from ${REGISTRY_AUTH_OVERRIDES_PATH}`);
         const registryAuthOverridesRaw: RegistryAuthPerDockerRegistry = require(REGISTRY_AUTH_OVERRIDES_PATH);
         for (const [registry, auth] of Object.entries(registryAuthOverridesRaw)) {
-            if (auth.serveraddress && auth.serveraddress !== registry) {
+            if (!auth.serveraddress) {
                 auth.serveraddress = registry;
             }
             registryAuthOverrides[registry] = auth;
@@ -133,7 +133,6 @@ export function setupRoutes(tenantLabelValue: string) {
                         }
                     }
                 }
-                console.log("using registry auth", req.headers['x-registry-auth']);
             } catch (err) {
                 console.error("Failed injecting registry auth into headers", err);
                 res.writeHead(500);
@@ -183,7 +182,6 @@ export function setupRoutes(tenantLabelValue: string) {
                 serveraddress: registryAuth.serveraddress!,
                 email: registryAuth.email,
             })).toString("base64url");
-            console.log("using registry auth", headers['x-registry-auth']);
         }
 
         const options = {
@@ -481,7 +479,7 @@ export function setupRoutes(tenantLabelValue: string) {
                     const response = await service.update({
                         username: registryAuth.auth.username!,
                         password: registryAuth.auth.password!,
-                        serveraddress: registryAuth.registry,
+                        serveraddress: registryAuth.auth.serveraddress!,
                     }, updateSpec);
                     res.json(response);
                     return;
@@ -1092,7 +1090,6 @@ export function setupRoutes(tenantLabelValue: string) {
                 });
                 res.send(ret);
             } catch (error: any) {
-                console.log(error);
                 console.error(error);
                 res.status(500).json({ message: error.message });
             }
