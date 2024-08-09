@@ -23,7 +23,9 @@ const REGISTRY_AUTH_OVERRIDES_PATH = process.env.REGISTRY_AUTH_OVERRIDES_PATH ||
 type RegistryAuth = {
     anonymous?: boolean,
     username?: string,
-    password?: string
+    password?: string,
+    email?: string,
+    serveraddress?: string
 }
 
 type RegistryAuthPerDockerRegistry = {
@@ -38,6 +40,9 @@ try {
         console.log(`Loading registry auth overrides from ${REGISTRY_AUTH_OVERRIDES_PATH}`);
         const registryAuthOverridesRaw: RegistryAuthPerDockerRegistry = require(REGISTRY_AUTH_OVERRIDES_PATH);
         for (const [registry, auth] of Object.entries(registryAuthOverridesRaw)) {
+            if(auth.serveraddress && auth.serveraddress !== registry) {
+                auth.serveraddress = registry;
+            }
             registryAuthOverrides[registry] = auth;
         }
     } else {
@@ -132,7 +137,12 @@ export function setupRoutes(tenantLabelValue: string) {
         if (registryAuth) {
             // make base auth header by using the username and password and base64 encoding them
             // like with basic auth
-            headers['x-registry-auth'] = Buffer.from(`${registryAuth.username}:${registryAuth.password}`).toString("base64url");
+            headers['x-registry-auth'] = Buffer.from(JSON.stringify({
+                username: registryAuth.username!,
+                password: registryAuth.password!,
+                serveraddress: registryAuth.serveraddress!,
+                email: registryAuth.email,
+            })).toString("base64url");
         }
 
         const options = {
@@ -362,7 +372,7 @@ export function setupRoutes(tenantLabelValue: string) {
 
             const permissionCheckResult = await checkPermissionsOnDockerImage(taskTemplate.ContainerSpec!.Image, registryAuth.auth);
             if (!permissionCheckResult.success) {
-                res.status(403).send("Permission check failed, Error:" + permissionCheckResult.errorMessage);
+                res.status(403).send("Permission check failed, Error: " + permissionCheckResult.errorMessage);
                 return;
             }
 
@@ -370,7 +380,8 @@ export function setupRoutes(tenantLabelValue: string) {
                 const service = await docker.createService({
                     username: registryAuth.auth.username!,
                     password: registryAuth.auth.password!,
-                    serveraddress: registryAuth.registry,
+                    serveraddress: registryAuth.auth.serveraddress!,
+                    email: registryAuth.auth.email,
                 }, serviceSpec);
                 res.status(201).json(service);
                 return;
