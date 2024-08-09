@@ -632,9 +632,7 @@ export function setupRoutes(tenantLabelValue: string) {
     router.delete('/:version?/networks/:id', async (req, res) => {
         const networkId = req.params.id;
 
-        // get the service allow listed networks as well
-        // this is fine, read only only here.
-        if (await isOwnedNetwork(networkId, true)) {
+        if (await isOwnedNetwork(networkId)) {
             try {
                 const network = docker.getNetwork(networkId);
                 await network.remove({});
