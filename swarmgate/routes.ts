@@ -570,14 +570,17 @@ export function setupRoutes(tenantLabelValue: string) {
 
     // Networks
 
-    function isNetworkOwned(network: Docker.NetworkInspectInfo): boolean {
+    function isNetworkOwned(network: Docker.NetworkInspectInfo, includeAllowListed: boolean): boolean {
+        if(includeAllowListed && SERVICE_ALLOW_LISTED_NETWORKS.includes(network.Name)) {
+            return true;
+        }
         return !!(network.Labels && network.Labels[tenantLabel] == tenantLabelValue);
     }
 
-    async function isOwnedNetwork(networkId: string): Promise<boolean> {
+    async function isOwnedNetwork(networkId: string, includeAllowListed: boolean = false): Promise<boolean> {
         try {
             const network = await docker.getNetwork(networkId).inspect();
-            return network && isNetworkOwned(network);
+            return network && isNetworkOwned(network, includeAllowListed);
         } catch (error) {
             console.error(error);
             return false;
@@ -617,7 +620,7 @@ export function setupRoutes(tenantLabelValue: string) {
             });
             // list the service allow listed networks as well
             // this is fine, read only only here.
-            const ownedNetworks = networks.filter((net) => isNetworkOwned(net) || SERVICE_ALLOW_LISTED_NETWORKS.includes(net));
+            const ownedNetworks = networks.filter((net) => isNetworkOwned(net, true));
             res.json(ownedNetworks);
         } catch (error: any) {
             console.error(error);
@@ -629,7 +632,9 @@ export function setupRoutes(tenantLabelValue: string) {
     router.delete('/:version?/networks/:id', async (req, res) => {
         const networkId = req.params.id;
 
-        if (await isOwnedNetwork(networkId)) {
+        // get the service allow listed networks as well
+        // this is fine, read only only here.
+        if (await isOwnedNetwork(networkId, true)) {
             try {
                 const network = docker.getNetwork(networkId);
                 await network.remove({});
@@ -649,7 +654,7 @@ export function setupRoutes(tenantLabelValue: string) {
 
         // allowed to get the service allow listed networks as well
         // this is fine, read only only here.
-        if (await isOwnedNetwork(networkId) && !SERVICE_ALLOW_LISTED_NETWORKS.includes(net)) {
+        if (await isOwnedNetwork(networkId, true)) {
             try {
                 const network = docker.getNetwork(networkId);
 
