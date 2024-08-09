@@ -1,4 +1,3 @@
-import { Router } from 'express';
 import express from 'express';
 import Docker from 'dockerode';
 import * as http from 'http';
@@ -40,9 +39,6 @@ try {
         console.log(`Loading registry auth overrides from ${REGISTRY_AUTH_OVERRIDES_PATH}`);
         const registryAuthOverridesRaw: RegistryAuthPerDockerRegistry = require(REGISTRY_AUTH_OVERRIDES_PATH);
         for (const [registry, auth] of Object.entries(registryAuthOverridesRaw)) {
-            if (!auth.serveraddress) {
-                auth.serveraddress = registry;
-            }
             registryAuthOverrides[registry] = auth;
         }
     } else {
@@ -102,69 +98,54 @@ export function setupRoutes(tenantLabelValue: string) {
         return ALLOWED_REGULAR_VOLUME_DRIVERS.includes(volumeDriver);
     }
 
-    function proxyRequestToDocker(includeRegistryAuth: boolean) {
-        return function proxyRequestToDocker_(req: express.Request, res: express.Response) {
-            try {
-                if (req.get('x-registry-config')) {
-                    for (const header in req.headers) {
-                        if (header.toLowerCase() === 'x-registry-config') {
-                            delete req.headers[header];
-                        }
-                    }
-                }
-                if (includeRegistryAuth && req.get('x-registry-auth')) {
-                    const registryAuthFromHeaders = JSON.parse(Buffer.from(req.get('x-registry-auth') as string, "base64url").toString()) as RegistryAuth;
-                    // strip any extra auth information
-                    for (const header in req.headers) {
-                        if (header.toLowerCase() === 'x-registry-auth') {
-                            delete req.headers[header];
-                        }
-                    }
+    function proxyRequestToDocker(req: express.Request, res: express.Response) {
+        const options = {
+            socketPath: '/var/run/docker.sock',
+            path: req.url,
+            method: req.method,
+            headers: req.headers,
+        };
 
-                    if (registryAuthFromHeaders.serveraddress) {
-                        const registryAuth = getAuthForRegistry(registryAuthFromHeaders.serveraddress!);
-                        if (registryAuth) {
-                            req.headers['x-registry-auth'] = JSON.stringify({
-                                username: registryAuth.username,
-                                password: registryAuth.password,
-                                serveraddress: registryAuth.serveraddress,
-                                email: registryAuth.email,
-                            });
-                        }
-                    }
+        // Create a request to the Unix socket
+        const proxyReq = http.request(options, (proxyRes) => {
+            // Pipe the response from the Unix socket back to the original response
+            res.writeHead(proxyRes.statusCode || 500, proxyRes.headers);
+            proxyRes.pipe(res);
+        });
+
+        // Pipe the original request body to the Unix socket
+        req.pipe(proxyReq);
+
+        // Handle errors in the request to the Unix socket
+        proxyReq.on('error', (err) => {
+            console.error('Error connecting to Unix socket:', err);
+            res.writeHead(500);
+            res.end('Internal server error');
+        });
+    }
+
+    function stripAuthInfo(req: express.Request) {
+        if (req.get('x-registry-config')) {
+            for (const header in req.headers) {
+                if (header.toLowerCase() === 'x-registry-config') {
+                    delete req.headers[header];
                 }
-            } catch (err) {
-                console.error("Failed injecting registry auth into headers", err);
-                res.writeHead(500);
-                res.end('Internal server error');
-                return;
             }
-
-
-            const options = {
-                socketPath: '/var/run/docker.sock',
-                path: req.url,
-                method: req.method,
-                headers: req.headers,
-            };
-
-            // Create a request to the Unix socket
-            const proxyReq = http.request(options, (proxyRes) => {
-                // Pipe the response from the Unix socket back to the original response
-                res.writeHead(proxyRes.statusCode || 500, proxyRes.headers);
-                proxyRes.pipe(res);
-            });
-
-            // Pipe the original request body to the Unix socket
-            req.pipe(proxyReq);
-
-            // Handle errors in the request to the Unix socket
-            proxyReq.on('error', (err) => {
-                console.error('Error connecting to Unix socket:', err);
-                res.writeHead(500);
-                res.end('Internal server error');
-            });
         }
+
+        if (req.get('x-registry-auth')) {
+            // strip any extra auth information
+            for (const header in req.headers) {
+                if (header.toLowerCase() === 'x-registry-auth') {
+                    delete req.headers[header];
+                }
+            }
+        }
+    }
+
+    function proxyRequestToDockerWithStrippedAuthInfo(req: express.Request, res: express.Response) {
+        stripAuthInfo(req);
+        proxyRequestToDocker(req, res);       
     }
 
 
@@ -224,15 +205,42 @@ export function setupRoutes(tenantLabelValue: string) {
     // basic plumbing, no need to check for ownership
     // also, these don't change the state of the system
     // as they are only GETs
-    router.head('/_ping', proxyRequestToDocker(false));
-    router.get('/_ping', proxyRequestToDocker(false));
-    router.get('/:version?/version', proxyRequestToDocker(false));
-    router.get('/:version?/nodes', proxyRequestToDocker(false));
-    router.get('/:version?/nodes/:id', proxyRequestToDocker(false));
-    router.get('/:version?/info', proxyRequestToDocker(false));
+    router.head('/_ping', proxyRequestToDockerWithStrippedAuthInfo);
+    router.get('/_ping', proxyRequestToDockerWithStrippedAuthInfo);
+    router.get('/:version?/version', proxyRequestToDockerWithStrippedAuthInfo);
+    router.get('/:version?/nodes', proxyRequestToDockerWithStrippedAuthInfo);
+    router.get('/:version?/nodes/:id', proxyRequestToDockerWithStrippedAuthInfo);
+    router.get('/:version?/info', proxyRequestToDockerWithStrippedAuthInfo);
 
     // make image resolution work
-    router.get('/:version?/distribution/:name/json', proxyRequestToDocker(true));
+    router.get('/:version?/distribution/:name/json', async (req: express.Request, res: express.Response) => {
+        console.log("distribution json for image", req.params.name);
+
+        stripAuthInfo(req);
+
+        const registryAuth = getAuthForDockerImage(req.params.name);
+        if (ONLY_KNOWN_REGISTRIES && !registryAuth) {
+            res.status(403).send('Access denied: Only known registries are allowed.');
+            return;
+        }
+        
+        const permissionCheckResult = await checkPermissionsOnDockerImage(req.params.name, registryAuth.auth);
+        if (!permissionCheckResult.success) {
+            res.status(403).send("Permission check failed, Error: " + permissionCheckResult.errorMessage);
+            return;
+        }
+
+        if(registryAuth.auth && !registryAuth.auth.anonymous) {
+            req.headers['x-registry-auth'] = Buffer.from(JSON.stringify({
+                username: registryAuth.auth.username!,
+                password: registryAuth.auth.password!,
+                serveraddress: registryAuth.auth.serveraddress!,
+                email: registryAuth.auth.email,
+            })).toString("base64url");
+        }
+
+        proxyRequestToDockerWithStrippedAuthInfo(req, res);
+    });
 
     // ATTENTION: we dont support requests to /:version?/swarm as this as this would give access to the swarm join token and break isolation
 
@@ -556,7 +564,7 @@ export function setupRoutes(tenantLabelValue: string) {
             return res.status(403).json({ message: 'Access Denied: Service not owned' });
         }
 
-        proxyRequestToDocker(false)(req, res);
+        proxyRequestToDockerWithStrippedAuthInfo(req, res);
     });
 
     // Endpoint to list tasks, showing only those related to owned services
@@ -615,7 +623,7 @@ export function setupRoutes(tenantLabelValue: string) {
             return res.status(403).json({ message: 'Access Denied: Service not owned' });
         }
 
-        proxyRequestToDocker(false)(req, res);
+        proxyRequestToDockerWithStrippedAuthInfo(req, res);
     });
 
     // Networks
