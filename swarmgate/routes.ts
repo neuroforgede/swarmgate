@@ -133,6 +133,7 @@ export function setupRoutes(tenantLabelValue: string) {
                         }
                     }
                 }
+                console.log("using registry auth", req.headers['x-registry-auth']);
             } catch (err) {
                 console.error("Failed injecting registry auth into headers", err);
                 res.writeHead(500);
@@ -182,6 +183,7 @@ export function setupRoutes(tenantLabelValue: string) {
                 serveraddress: registryAuth.serveraddress!,
                 email: registryAuth.email,
             })).toString("base64url");
+            console.log("using registry auth", headers['x-registry-auth']);
         }
 
         const options = {
