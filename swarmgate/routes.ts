@@ -12,7 +12,7 @@ const KNOWN_VOLUME_TYPES = ['bind', 'volume', 'tmpfs', 'npipe', 'cluster'];
 const ALLOWED_VOLUME_TYPES = process.env.ALLOWED_VOLUME_TYPES?.split(',') || ['bind', 'volume', 'tmpfs', 'npipe', 'cluster'];
 const ALLOW_PORT_EXPOSE = process.env.ALLOW_PORT_EXPOSE === '1' || process.env.ALLOW_PORT_EXPOSE === 'true';
 const SERVICE_ALLOW_LISTED_NETWORKS = process.env.SERVICE_ALLOW_LISTED_NETWORKS?.split(',') || [];
-const CHECK_VOLUME_OWNERSHIP_VIA_PREFIX = process.env.CHECK_VOLUME_OWNERSHIP_VIA_PREFIX === 'true';
+const CHECK_VOLUME_OWNERSHIP_VIA_PREFIX = process.env.CHECK_VOLUME_OWNERSHIP_VIA_PREFIX === '1' || process.env.CHECK_VOLUME_OWNERSHIP_VIA_PREFIX === 'true';
 
 const tenantLabel = "com.github.neuroforgede.swarmgate.tenant";
 
