@@ -962,13 +962,16 @@ export function setupRoutes(tenantLabelValue: string) {
         if(CHECK_VOLUME_OWNERSHIP_VIA_PREFIX) {
             return volume.Name.startsWith(tenantLabelValue);
         }
-        return !!(volume.Labels && volume.Labels[tenantLabel] == tenantLabelValue);
+        if(!volume.Labels) {
+            return false;
+        }
+        return volume.Labels[tenantLabel] == tenantLabelValue;
     }
 
     async function isOwnedVolume(volumeName: string): Promise<boolean> {
         try {
             const volume = await docker.getVolume(volumeName).inspect();
-            return volume.Labels && isVolumeOwned(volume);
+            return isVolumeOwned(volume);
         } catch (error) {
             console.error(error);
             return false;
