@@ -313,7 +313,7 @@ export function setupRoutes(tenantLabelValue: string) {
 
         if (taskTemplate.Networks) {
             for (const network of taskTemplate.Networks) {
-                if (SERVICE_ALLOW_LISTED_NETWORKS.includes(network.Target)) {
+                if (await isOwnedNetwork(network.Target, true)) {
                     // explicitly allowed. Example: Traefik Ingress network
                     continue;
                 }
