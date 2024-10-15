@@ -250,7 +250,7 @@ export function setupRoutes(tenantLabelValue: string) {
             })).toString("base64url");
         }
 
-        proxyRequestToDockerWithStrippedAuthInfo(req, res);
+        proxyRequestToDocker(req, res);
     });
 
     // ATTENTION: we dont support requests to /:version?/swarm as this as this would give access to the swarm join token and break isolation
