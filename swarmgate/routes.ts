@@ -50,7 +50,7 @@ try {
     console.error(`Failed to load registry auth overrides: ${error.message}`);
 }
 
-function getRegistryFromDockerImage(image: string): string {
+function getRegistryFromDockerImage(image) {
     const parts = image.split('/');
     if (parts.length < 2) {
         return '';
@@ -67,11 +67,20 @@ function getAuthForDockerImage(image: string): {
     registry: string
 } {
     let registry = getRegistryFromDockerImage(image);
+    console.log(`detected registry: ${registry} for image ${image}`);
     if (!registry) {
         registry = 'docker.io';
     }
+    const auth = getAuthForRegistry(registry);
+    console.log(`auth for registry ${registry}: ${JSON.stringify({
+        anonymous: auth?.anonymous,
+        username: auth?.username,
+        email: auth?.email,
+        password: "***",
+        serveraddress: auth?.serveraddress
+    })}`);
     return {
-        auth: getAuthForRegistry(registry),
+        auth: auth,
         registry: registry
     };
 }
