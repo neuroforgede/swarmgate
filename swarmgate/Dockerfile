@@ -1,6 +1,6 @@
 # adapted from https://github.com/BretFisher/node-docker-good-defaults
 # if you're doing anything beyond your local machine, please pin this to a specific version at https://hub.docker.com/_/node/
-FROM node:20-slim
+FROM node:22-slim
 
 RUN apt-get update && apt-get upgrade -y
 
