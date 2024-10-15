@@ -50,7 +50,7 @@ try {
     console.error(`Failed to load registry auth overrides: ${error.message}`);
 }
 
-function getRegistryFromDockerImage(image) {
+function getRegistryFromDockerImage(image: string): string {
     const parts = image.split('/');
     if (parts.length < 2) {
         return '';
