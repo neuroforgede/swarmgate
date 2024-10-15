@@ -38,7 +38,8 @@ try {
     const overrideExists = fs.existsSync(REGISTRY_AUTH_OVERRIDES_PATH);
     if (overrideExists) {
         console.log(`Loading registry auth overrides from ${REGISTRY_AUTH_OVERRIDES_PATH}`);
-        const registryAuthOverridesRaw: RegistryAuthPerDockerRegistry = require(REGISTRY_AUTH_OVERRIDES_PATH);
+        const fileContents = fs.readFileSync(REGISTRY_AUTH_OVERRIDES_PATH, 'utf8');
+        const registryAuthOverridesRaw: RegistryAuthPerDockerRegistry = JSON.parse(fileContents);
         for (const [registry, auth] of Object.entries(registryAuthOverridesRaw)) {
             registryAuthOverrides[registry] = auth;
         }
