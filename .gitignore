@@ -1,3 +1,5 @@
+registry_auth_overrides.json
+
 # Logs
 logs
 *.log

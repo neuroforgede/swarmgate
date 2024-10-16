@@ -67,18 +67,10 @@ function getAuthForDockerImage(image: string): {
     registry: string
 } {
     let registry = getRegistryFromDockerImage(image);
-    console.log(`detected registry: ${registry} for image ${image}`);
     if (!registry) {
         registry = 'docker.io';
     }
     const auth = getAuthForRegistry(registry);
-    console.log(`auth for registry ${registry}: ${JSON.stringify({
-        anonymous: auth?.anonymous,
-        username: auth?.username,
-        email: auth?.email,
-        password: "***",
-        serveraddress: auth?.serveraddress
-    })}`);
     return {
         auth: auth,
         registry: registry
@@ -88,10 +80,9 @@ function getAuthForDockerImage(image: string): {
 
 export function setupRoutes(tenantLabelValue: string) {
     const router = express.Router();
-    const namePrefix = process.env.NAME_PREFIX || tenantLabelValue;
 
     function isResourceNameAllowed(name: string): boolean {
-        if (name.startsWith(namePrefix)) {
+        if (name.startsWith(tenantLabelValue + '_')) {
             return true;
         }
         return false;
@@ -224,7 +215,7 @@ export function setupRoutes(tenantLabelValue: string) {
     router.get('/:version?/info', proxyRequestToDockerWithStrippedAuthInfo);
 
     // make image resolution work
-    router.get('/:version?/distribution/:name/json', async (req: express.Request, res: express.Response) => {
+    router.get('/:version?/distribution/:name(*)/json', async (req: express.Request, res: express.Response) => {
         console.log("distribution json for image", req.params.name);
 
         stripAuthInfo(req);
