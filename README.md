@@ -64,7 +64,7 @@ services:
       - TLS_KEY_FILE=/run/secrets/tls_key
       - TLS_CERT_FILE=/run/secrets/tls_cert
       - TLS_CA_FILE=/run/secrets/tls_ca
-      - TLS_DISABLE=false
+      - TLS_DISABLED=false
     user: root
     secrets:
       - tls_key
@@ -128,7 +128,7 @@ docker service create --name tenant1_nginx nginx
 - TLS_KEY_FILE: Path to TLS key file.
 - TLS_CERT_FILE: Path to TLS cert file.
 - TLS_CERT_FILE: Path to TLS cert file.
-- TLS_DISABLE: Set to 1 or true to disable TLS.
+- TLS_DISABLED: Set to 1 or true to disable TLS.
 
 
 ## 🤝 How to achieve Multitenancy with this?
