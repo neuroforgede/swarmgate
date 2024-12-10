@@ -13,7 +13,7 @@ services:
       - TLS_KEY_FILE=/run/secrets/tls_key
       - TLS_CERT_FILE=/run/secrets/tls_cert
       - TLS_CA_FILE=/run/secrets/tls_ca
-      - TLS_DISABLE=false
+      - TLS_DISABLED=false
     user: root
     secrets:
       - tls_key
