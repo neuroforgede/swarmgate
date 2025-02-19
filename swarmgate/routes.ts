@@ -164,7 +164,7 @@ export function setupRoutes(tenantLabelValue: string) {
                 password: registryAuth.password!,
                 serveraddress: registryAuth.serveraddress!,
                 email: registryAuth.email,
-            })).toString("base64url");
+            })).toString("base64");
         }
 
         const options = {
@@ -238,7 +238,7 @@ export function setupRoutes(tenantLabelValue: string) {
                 password: registryAuth.auth.password!,
                 serveraddress: registryAuth.auth.serveraddress!,
                 email: registryAuth.auth.email,
-            })).toString("base64url");
+            })).toString("base64");
         }
 
         proxyRequestToDocker(req, res);
