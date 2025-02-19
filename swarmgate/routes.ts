@@ -221,7 +221,7 @@ export function setupRoutes(tenantLabelValue: string) {
         stripAuthInfo(req);
 
         const registryAuth = getAuthForDockerImage(req.params.name);
-        if (ONLY_KNOWN_REGISTRIES && !registryAuth) {
+        if (ONLY_KNOWN_REGISTRIES && !registryAuth.auth) {
             res.status(403).send('Access denied: Only known registries are allowed.');
             return;
         }
@@ -414,7 +414,7 @@ export function setupRoutes(tenantLabelValue: string) {
             // TODO: setup default ulimits
 
             const registryAuth = getAuthForDockerImage(taskTemplate.ContainerSpec!.Image);
-            if (ONLY_KNOWN_REGISTRIES && !registryAuth) {
+            if (ONLY_KNOWN_REGISTRIES && !registryAuth.auth) {
                 res.status(403).send('Access denied: Only known registries are allowed.');
                 return;
             }
@@ -474,7 +474,7 @@ export function setupRoutes(tenantLabelValue: string) {
                 updateSpec.rollback = req.query.rollback;
 
                 const registryAuth = getAuthForDockerImage(taskTemplate.ContainerSpec!.Image);
-                if (ONLY_KNOWN_REGISTRIES && !registryAuth) {
+                if (ONLY_KNOWN_REGISTRIES && !registryAuth.auth) {
                     res.status(403).send('Access denied: Only known registries are allowed.');
                     return;
                 }
