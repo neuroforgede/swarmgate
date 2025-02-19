@@ -164,7 +164,7 @@ export function setupRoutes(tenantLabelValue: string) {
                 password: registryAuth.password!,
                 serveraddress: registryAuth.serveraddress!,
                 email: registryAuth.email,
-            })).toString("base64url");
+            })).toString("base64");
         }
 
         const options = {
@@ -221,7 +221,7 @@ export function setupRoutes(tenantLabelValue: string) {
         stripAuthInfo(req);
 
         const registryAuth = getAuthForDockerImage(req.params.name);
-        if (ONLY_KNOWN_REGISTRIES && !registryAuth) {
+        if (ONLY_KNOWN_REGISTRIES && !registryAuth.auth) {
             res.status(403).send('Access denied: Only known registries are allowed.');
             return;
         }
@@ -238,7 +238,7 @@ export function setupRoutes(tenantLabelValue: string) {
                 password: registryAuth.auth.password!,
                 serveraddress: registryAuth.auth.serveraddress!,
                 email: registryAuth.auth.email,
-            })).toString("base64url");
+            })).toString("base64");
         }
 
         proxyRequestToDocker(req, res);
