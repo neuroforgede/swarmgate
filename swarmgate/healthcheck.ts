@@ -38,7 +38,7 @@ if (!TLS_DISABLED) {
     timeout: 2000,
     host: 'localhost',
     port: process.env.PORT || 8080,
-    path: '/_healthz'
+    path: '/_ping'
   }, (res) => {
     console.info('STATUS: ' + res.statusCode);
     process.exitCode = (res.statusCode === 200) ? 0 : 1;
